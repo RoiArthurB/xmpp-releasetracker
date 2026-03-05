@@ -1,6 +1,6 @@
 # xmpp-releasetracker
 
-![.github/images/banner.png](Banner logo)
+![Banner logo](.github/images/banner.png)
 
 A Go bot that watches repositories on GitHub, GitLab, and Gitea for new releases or tags, and announces them via XMPP — both to MUC rooms and to individual users.
 
