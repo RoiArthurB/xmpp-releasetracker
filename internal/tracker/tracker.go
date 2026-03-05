@@ -64,7 +64,7 @@ func (t *Tracker) poll() {
 		}
 
 		for _, slug := range slugs {
-			if err := t.processRepo(b, slug, entry.Notify); err != nil {
+			if err := t.processRepo(b, slug, mergeNotify(t.cfg.DefaultNotify, entry.Notify)); err != nil {
 				log.Printf("[%s] %s: %v", b.Name(), slug, err)
 			}
 		}
@@ -144,6 +144,22 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 	}
 
 	return nil
+}
+
+// mergeNotify returns defaults plus any extra targets not already in defaults.
+func mergeNotify(defaults, extras []config.NotifyTarget) []config.NotifyTarget {
+	result := make([]config.NotifyTarget, len(defaults))
+	copy(result, defaults)
+	seen := make(map[string]struct{}, len(defaults))
+	for _, t := range defaults {
+		seen[t.JID+"|"+t.Type] = struct{}{}
+	}
+	for _, t := range extras {
+		if _, ok := seen[t.JID+"|"+t.Type]; !ok {
+			result = append(result, t)
+		}
+	}
+	return result
 }
 
 func (t *Tracker) sendNotification(target config.NotifyTarget, msg string) error {

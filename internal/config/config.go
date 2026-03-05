@@ -56,11 +56,12 @@ type TrackingEntry struct {
 }
 
 type Config struct {
-	XMPP     XMPPConfig     `yaml:"xmpp"`
-	Backends BackendsConfig `yaml:"backends"`
-	Database DatabaseConfig `yaml:"database"`
-	Interval int            `yaml:"interval"`
-	Tracking []TrackingEntry `yaml:"tracking"`
+	XMPP          XMPPConfig      `yaml:"xmpp"`
+	Backends      BackendsConfig  `yaml:"backends"`
+	Database      DatabaseConfig  `yaml:"database"`
+	Interval      int             `yaml:"interval"`
+	DefaultNotify []NotifyTarget  `yaml:"default_notify"` // optional; applied to every tracked repo
+	Tracking      []TrackingEntry `yaml:"tracking"`
 }
 
 func Load(path string) (*Config, error) {

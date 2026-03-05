@@ -59,6 +59,15 @@ database:
 
 interval: 3600                  # Seconds between poll cycles. Default: 3600
 
+# Optional. Receives notifications for every tracked repo.
+# Per-entry notify lists are additive on top of this.
+# Duplicates between the two are ignored automatically.
+default_notify:
+  - jid: "you@example.com"
+    type: direct
+  - jid: "general@conference.example.com"
+    type: muc
+
 tracking:
   - ...                         # See "Tracking entries" below
 ```
