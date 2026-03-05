@@ -100,13 +100,21 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 		return fmt.Errorf("loading last_seen: %w", err)
 	}
 
-	// First run: silently record the latest release without announcing.
+	// First run: record the latest release, and announce it if it's less than 24h old.
 	if lastSeen == nil {
 		// APIs return newest first; also check by timestamp as a tiebreaker.
 		latest := releases[0]
 		for _, r := range releases[1:] {
 			if r.PublishedAt.After(latest.PublishedAt) {
 				latest = r
+			}
+		}
+		if !latest.PublishedAt.IsZero() && time.Since(latest.PublishedAt) < 24*time.Hour {
+			body, avatarURL := formatRelease(b.Name(), latest)
+			for _, target := range notify {
+				if err := t.sendNotification(target, body, avatarURL); err != nil {
+					log.Printf("Sending notification to %s: %v", target.JID, err)
+				}
 			}
 		}
 		return t.store.SetLastSeen(b.Name(), slug, latest.TagName, latest.PublishedAt)

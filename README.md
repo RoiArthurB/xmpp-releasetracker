@@ -21,7 +21,7 @@ A Go bot that watches repositories on GitHub, GitLab, and Gitea for new releases
 ## Installation
 
 ```bash
-git clone https://your-forge.example.com/you/xmpp-releasetracker
+git clone https://github.com/RoiArthurB/xmpp-releasetracker.git
 cd xmpp-releasetracker
 go build -o xmpp-releasetracker .
 ```
