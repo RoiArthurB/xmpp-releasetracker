@@ -1,0 +1,76 @@
+xmpp:
+  jid: "bot@example.com"
+  password: "secret"
+  server: "example.com:5222"   # optional; defaults to domain from JID
+  muc_nick: "releasebot"        # nickname used when joining MUC rooms
+
+backends:
+  github:
+    token: "ghp_xxx"
+  gitlab:
+    - url: "https://gitlab.com"
+      token: "glpat-xxx"
+    - url: "https://gitlab.example.com"
+      token: "glpat-yyy"
+  gitea:
+    - url: "https://gitea.example.com"
+      token: "xxx"
+
+database:
+  path: "./releasetracker.db"
+
+interval: 3600   # seconds between full poll cycles (default 3600)
+
+tracking:
+  # Individual GitHub repo
+  - type: repo
+    backend: github
+    slug: "torvalds/linux"
+    notify:
+      - jid: "releases@conference.example.com"
+        type: muc
+      - jid: "user@example.com"
+        type: direct
+
+  # GitLab repo (specify which instance)
+  - type: repo
+    backend: gitlab
+    slug: "gitlab-org/gitlab"
+    instance: "https://gitlab.com"
+    notify:
+      - jid: "devroom@conference.example.com"
+        type: muc
+
+  # Gitea repo
+  - type: repo
+    backend: gitea
+    slug: "owner/repo"
+    instance: "https://gitea.example.com"
+    notify:
+      - jid: "room@conference.example.com"
+        type: muc
+
+  # GitHub user's starred repos
+  - type: user_stars
+    backend: github
+    username: "someuser"
+    notify:
+      - jid: "room@conference.example.com"
+        type: muc
+
+  # GitHub org
+  - type: org
+    backend: github
+    org: "golang"
+    notify:
+      - jid: "room@conference.example.com"
+        type: muc
+
+  # GitLab group
+  - type: group
+    backend: gitlab
+    group: "gitlab-org"
+    instance: "https://gitlab.com"
+    notify:
+      - jid: "room@conference.example.com"
+        type: muc
