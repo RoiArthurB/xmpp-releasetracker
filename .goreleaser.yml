@@ -45,6 +45,7 @@ dockers:
   - image_templates:
       - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
       - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
+    dockerfile: Dockerfile.goreleaser
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
@@ -52,6 +53,7 @@ dockers:
   - image_templates:
       - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
       - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
+    dockerfile: Dockerfile.goreleaser
     use: buildx
     goarch: arm64
     build_flag_templates:

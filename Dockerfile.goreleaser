@@ -1,0 +1,7 @@
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY xmpp-releasetracker .
+VOLUME ["/data"]
+ENTRYPOINT ["/app/xmpp-releasetracker"]
+CMD ["-config", "/etc/xmpp-releasetracker/config.yml"]
