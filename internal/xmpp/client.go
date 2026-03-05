@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	goxmpp "github.com/xmppo/go-xmpp"
 )
+
+const keepAliveInterval = 30 * time.Second
 
 // Client wraps a go-xmpp connection.
 type Client struct {
@@ -106,6 +109,22 @@ func (c *Client) DiscardIncoming() {
 				if !strings.Contains(err.Error(), "use of closed network connection") {
 					log.Printf("XMPP recv error: %v", err)
 				}
+				return
+			}
+		}
+	}()
+}
+
+// SendKeepAlives starts a goroutine that periodically sends a whitespace
+// keep-alive to prevent the server from closing an idle connection during
+// long poll cycles.
+func (c *Client) SendKeepAlives() {
+	go func() {
+		ticker := time.NewTicker(keepAliveInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			if _, err := c.conn.SendKeepAlive(); err != nil {
+				log.Printf("XMPP keep-alive error: %v", err)
 				return
 			}
 		}
