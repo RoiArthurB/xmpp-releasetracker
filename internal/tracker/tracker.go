@@ -100,15 +100,24 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 		return fmt.Errorf("loading last_seen: %w", err)
 	}
 
-	// All backends return releases newest-first. Determine which are new.
-	// On first run (lastSeen == nil): silently record the latest without announcing.
-	var newReleases []backend.Release
+	// First run: silently record the latest release without announcing.
 	if lastSeen == nil {
-		// releases[0] is the newest (API order).
-		newReleases = []backend.Release{releases[0]}
-	} else if releases[0].PublishedAt.IsZero() {
-		// Tag fallback: no timestamps available, use API position as a proxy.
-		// Find lastSeen in the list; everything before it (index < lastSeenIdx) is newer.
+		// APIs return newest first; also check by timestamp as a tiebreaker.
+		latest := releases[0]
+		for _, r := range releases[1:] {
+			if r.PublishedAt.After(latest.PublishedAt) {
+				latest = r
+			}
+		}
+		return t.store.SetLastSeen(b.Name(), slug, latest.TagName, latest.PublishedAt)
+	}
+
+	// Determine new releases to announce.
+	var newReleases []backend.Release
+	if releases[0].PublishedAt.IsZero() || lastSeen.PublishedAt.IsZero() {
+		// No usable timestamps (tag fallback or stale DB entry): use API position
+		// as a recency proxy — APIs return newest first.
+		// Find lastSeen; everything before it in the list is newer.
 		lastSeenIdx := len(releases) // if not found, treat all as new
 		for i, r := range releases {
 			if r.TagName == lastSeen.TagName {
@@ -121,7 +130,7 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 			newReleases = append(newReleases, releases[i])
 		}
 	} else {
-		// Has timestamps: sort ascending and filter by time.
+		// Both sides have timestamps: sort ascending and filter by time.
 		sort.Slice(releases, func(i, j int) bool {
 			return releases[i].PublishedAt.Before(releases[j].PublishedAt)
 		})
@@ -145,7 +154,7 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 		}
 	}
 
-	// Update last_seen to the most recent release we processed.
+	// Update last_seen to the most recent release processed.
 	if len(newReleases) > 0 {
 		latest := newReleases[len(newReleases)-1]
 		if err := t.store.SetLastSeen(b.Name(), slug, latest.TagName, latest.PublishedAt); err != nil {
