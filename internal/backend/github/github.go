@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/roiarthurb/xmpp-releasetracker/internal/backend"
@@ -55,6 +56,9 @@ type ghRelease struct {
 	Body        string    `json:"body"`
 	HTMLURL     string    `json:"html_url"`
 	Prerelease  bool      `json:"prerelease"`
+	Author      struct {
+		AvatarURL string `json:"avatar_url"`
+	} `json:"author"`
 }
 
 type ghTag struct {
@@ -94,6 +98,7 @@ func (g *GitHub) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 			Body:         r.Body,
 			URL:          r.HTMLURL,
 			IsPrerelease: r.Prerelease,
+			AvatarURL:    r.Author.AvatarURL,
 		})
 	}
 	return result, nil
@@ -106,6 +111,8 @@ func (g *GitHub) getRepoTags(slug string, limit int) ([]backend.Release, error) 
 		return nil, err
 	}
 
+	owner := strings.SplitN(slug, "/", 2)[0]
+	avatarURL := fmt.Sprintf("https://github.com/%s.png", owner)
 	repoURL := fmt.Sprintf("https://github.com/%s", slug)
 	result := make([]backend.Release, 0, len(tags))
 	for _, t := range tags {
@@ -117,6 +124,7 @@ func (g *GitHub) getRepoTags(slug string, limit int) ([]backend.Release, error) 
 			Name:        t.Name,
 			PublishedAt: time.Time{}, // tags don't have timestamps directly
 			URL:         tagURL,
+			AvatarURL:   avatarURL,
 		})
 	}
 	return result, nil

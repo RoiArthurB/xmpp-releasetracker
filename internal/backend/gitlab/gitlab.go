@@ -56,7 +56,10 @@ type glRelease struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	ReleasedAt  time.Time `json:"released_at"`
-	Links       struct {
+	Author      struct {
+		AvatarURL string `json:"avatar_url"`
+	} `json:"author"`
+	Links struct {
 		Self string `json:"self"`
 	} `json:"_links"`
 }
@@ -100,6 +103,7 @@ func (g *GitLab) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 			PublishedAt: r.ReleasedAt,
 			Body:        r.Description,
 			URL:         releaseURL,
+			AvatarURL:   r.Author.AvatarURL,
 		})
 	}
 	return result, nil

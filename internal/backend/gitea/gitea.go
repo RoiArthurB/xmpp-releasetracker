@@ -54,6 +54,9 @@ type giteaRelease struct {
 	PublishedAt time.Time `json:"published_at"`
 	HTMLURL     string    `json:"html_url"`
 	Prerelease  bool      `json:"prerelease"`
+	Publisher   struct {
+		AvatarURL string `json:"avatar_url"`
+	} `json:"publisher"`
 }
 
 type giteaTag struct {
@@ -88,6 +91,7 @@ func (g *Gitea) GetRepoReleases(slug string, limit int) ([]backend.Release, erro
 			Body:         r.Body,
 			URL:          r.HTMLURL,
 			IsPrerelease: r.Prerelease,
+			AvatarURL:    r.Publisher.AvatarURL,
 		})
 	}
 	return result, nil

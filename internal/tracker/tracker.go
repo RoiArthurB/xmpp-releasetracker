@@ -1,6 +1,8 @@
 package tracker
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
 	"log"
 	"sort"
@@ -14,8 +16,8 @@ import (
 )
 
 const (
-	maxBodyLines = 10
-	maxBodyChars = 2000
+	maxBodyLines  = 10
+	maxBodyChars  = 2000
 	releasesLimit = 5
 )
 
@@ -127,9 +129,9 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 	}
 
 	for _, r := range newReleases {
-		msg := formatRelease(b.Name(), r)
+		plain, html := formatRelease(b.Name(), r)
 		for _, target := range notify {
-			if err := t.sendNotification(target, msg); err != nil {
+			if err := t.sendNotification(target, plain, html); err != nil {
 				log.Printf("Sending notification to %s: %v", target.JID, err)
 			}
 		}
@@ -144,6 +146,17 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 	}
 
 	return nil
+}
+
+func (t *Tracker) sendNotification(target config.NotifyTarget, plain, html string) error {
+	switch target.Type {
+	case "muc":
+		return t.xmpp.SendMUC(target.JID, plain, html)
+	case "direct":
+		return t.xmpp.SendDirect(target.JID, plain, html)
+	default:
+		return fmt.Errorf("unknown notify type: %s", target.Type)
+	}
 }
 
 // mergeNotify returns defaults plus any extra targets not already in defaults.
@@ -162,18 +175,8 @@ func mergeNotify(defaults, extras []config.NotifyTarget) []config.NotifyTarget {
 	return result
 }
 
-func (t *Tracker) sendNotification(target config.NotifyTarget, msg string) error {
-	switch target.Type {
-	case "muc":
-		return t.xmpp.SendMUC(target.JID, msg)
-	case "direct":
-		return t.xmpp.SendDirect(target.JID, msg)
-	default:
-		return fmt.Errorf("unknown notify type: %s", target.Type)
-	}
-}
-
-func formatRelease(backendName string, r backend.Release) string {
+// formatRelease returns a plain-text message and an XHTML-IM body for the given release.
+func formatRelease(backendName string, r backend.Release) (plain, html string) {
 	label := strings.ToUpper(backendName[:1]) + backendName[1:]
 
 	title := r.TagName
@@ -181,14 +184,50 @@ func formatRelease(backendName string, r backend.Release) string {
 		title = fmt.Sprintf("%s %q", r.TagName, r.Name)
 	}
 
-	msg := fmt.Sprintf("[%s] %s — %s\n%s", label, r.RepoSlug, title, r.URL)
-
+	// Plain text (unchanged behaviour)
+	plain = fmt.Sprintf("[%s] %s — %s\n%s", label, r.RepoSlug, title, r.URL)
 	if r.Body != "" {
-		body := truncateBody(r.Body)
-		msg += "\n\n" + body
+		plain += "\n\n" + truncateBody(r.Body)
 	}
 
-	return msg
+	// XHTML-IM body
+	html = buildHTML(r, title)
+	return
+}
+
+// buildHTML constructs the XHTML-IM body for a release notification.
+// It includes an avatar image when AvatarURL is set.
+func buildHTML(r backend.Release, title string) string {
+	var b strings.Builder
+
+	// Header line: [avatar] repo-link — tag "name"
+	b.WriteString("<p>")
+	if r.AvatarURL != "" {
+		fmt.Fprintf(&b, `<img src="%s" alt="avatar" height="32" width="32"/> `,
+			xmlEscape(r.AvatarURL))
+	}
+	fmt.Fprintf(&b, `<a href="%s">%s</a> &#x2014; %s`,
+		xmlEscape(r.RepoURL),
+		xmlEscape(r.RepoSlug),
+		xmlEscape(title),
+	)
+	b.WriteString("</p>")
+
+	// Release URL
+	fmt.Fprintf(&b, `<p><a href="%s">%s</a></p>`,
+		xmlEscape(r.URL),
+		xmlEscape(r.URL),
+	)
+
+	// Release body: escape text content, convert newlines to <br/>
+	if r.Body != "" {
+		body := truncateBody(r.Body)
+		b.WriteString("<p>")
+		b.WriteString(strings.ReplaceAll(xmlEscape(body), "\n", "<br/>"))
+		b.WriteString("</p>")
+	}
+
+	return b.String()
 }
 
 // truncateBody limits release notes to maxBodyLines lines and maxBodyChars characters.
@@ -203,4 +242,11 @@ func truncateBody(body string) string {
 		result = result[:maxBodyChars] + "…"
 	}
 	return result
+}
+
+// xmlEscape escapes s for use in XML text content or attribute values.
+func xmlEscape(s string) string {
+	var buf bytes.Buffer
+	xml.EscapeText(&buf, []byte(s))
+	return buf.String()
 }

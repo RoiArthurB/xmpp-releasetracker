@@ -12,6 +12,7 @@ type Release struct {
 	Body         string
 	URL          string
 	IsPrerelease bool
+	AvatarURL    string // project icon or author/owner avatar; empty when unavailable
 }
 
 // Backend is the interface all forge backends must implement.
