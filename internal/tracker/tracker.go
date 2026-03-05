@@ -100,23 +100,36 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 		return fmt.Errorf("loading last_seen: %w", err)
 	}
 
-	// Sort ascending by published_at so we announce in order.
-	sort.Slice(releases, func(i, j int) bool {
-		return releases[i].PublishedAt.Before(releases[j].PublishedAt)
-	})
-
-	// Filter: releases strictly newer than last_seen.
-	// On first run (lastSeen == nil), only announce the single latest release to
-	// avoid flooding with the entire history.
+	// All backends return releases newest-first. Determine which are new.
+	// On first run (lastSeen == nil): silently record the latest without announcing.
 	var newReleases []backend.Release
 	if lastSeen == nil {
-		newReleases = []backend.Release{releases[len(releases)-1]}
+		// releases[0] is the newest (API order).
+		newReleases = []backend.Release{releases[0]}
+	} else if releases[0].PublishedAt.IsZero() {
+		// Tag fallback: no timestamps available, use API position as a proxy.
+		// Find lastSeen in the list; everything before it (index < lastSeenIdx) is newer.
+		lastSeenIdx := len(releases) // if not found, treat all as new
+		for i, r := range releases {
+			if r.TagName == lastSeen.TagName {
+				lastSeenIdx = i
+				break
+			}
+		}
+		// Reverse so we announce oldest-first.
+		for i := lastSeenIdx - 1; i >= 0; i-- {
+			newReleases = append(newReleases, releases[i])
+		}
 	} else {
+		// Has timestamps: sort ascending and filter by time.
+		sort.Slice(releases, func(i, j int) bool {
+			return releases[i].PublishedAt.Before(releases[j].PublishedAt)
+		})
 		for _, r := range releases {
 			if r.TagName == lastSeen.TagName {
 				continue
 			}
-			if !r.PublishedAt.IsZero() && !r.PublishedAt.After(lastSeen.PublishedAt) {
+			if !r.PublishedAt.After(lastSeen.PublishedAt) {
 				continue
 			}
 			newReleases = append(newReleases, r)
