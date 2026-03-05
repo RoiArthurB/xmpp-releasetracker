@@ -108,16 +108,21 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 	})
 
 	// Filter: releases strictly newer than last_seen.
-	// When lastSeen is nil (first run for this repo), all fetched releases are announced.
+	// On first run (lastSeen == nil), only announce the single latest release to
+	// avoid flooding with the entire history.
 	var newReleases []backend.Release
-	for _, r := range releases {
-		if lastSeen != nil && r.TagName == lastSeen.TagName {
-			continue
+	if lastSeen == nil {
+		newReleases = []backend.Release{releases[len(releases)-1]}
+	} else {
+		for _, r := range releases {
+			if r.TagName == lastSeen.TagName {
+				continue
+			}
+			if !r.PublishedAt.IsZero() && !r.PublishedAt.After(lastSeen.PublishedAt) {
+				continue
+			}
+			newReleases = append(newReleases, r)
 		}
-		if lastSeen != nil && !r.PublishedAt.IsZero() && !r.PublishedAt.After(lastSeen.PublishedAt) {
-			continue
-		}
-		newReleases = append(newReleases, r)
 	}
 
 	for _, r := range newReleases {
