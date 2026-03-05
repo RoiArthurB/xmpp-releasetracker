@@ -55,46 +55,64 @@ func (c *Client) JoinMUC(roomJID string) error {
 }
 
 // SendMUC sends a groupchat message to the given MUC room JID.
-// If html is non-empty, an XHTML-IM body is included alongside the plain text fallback.
-func (c *Client) SendMUC(roomJID, plain, html string) error {
-	return c.sendMessage(roomJID, "groupchat", plain, html)
+// avatarURL, when non-empty, must be the first line of body; a XEP-0385 SIMS
+// reference is added so supporting clients render it as an inline image.
+func (c *Client) SendMUC(roomJID, body, avatarURL string) error {
+	return c.sendMessage(roomJID, "groupchat", body, avatarURL)
 }
 
 // SendDirect sends a direct (chat) message to the given JID.
-// If html is non-empty, an XHTML-IM body is included alongside the plain text fallback.
-func (c *Client) SendDirect(jid, plain, html string) error {
-	return c.sendMessage(jid, "chat", plain, html)
+func (c *Client) SendDirect(jid, body, avatarURL string) error {
+	return c.sendMessage(jid, "chat", body, avatarURL)
 }
 
-// sendMessage sends a message, using a raw XHTML-IM stanza when html is provided.
-func (c *Client) sendMessage(to, msgType, plain, html string) error {
-	if html == "" {
-		_, err := c.conn.Send(goxmpp.Chat{
-			Remote: to,
-			Type:   msgType,
-			Text:   plain,
-		})
-		return err
+// sendMessage builds and sends a raw XMPP stanza containing:
+//   - a plain-text <body> (text includes XEP-0393 styling markers)
+//   - an optional XEP-0385 SIMS <reference> when avatarURL is non-empty
+//   - a XEP-0393 <styling> hint element
+func (c *Client) sendMessage(to, msgType, body, avatarURL string) error {
+	var extras strings.Builder
+
+	// XEP-0385 (Stateless Inline Media Sharing): reference for the avatar image.
+	// The avatar URL must appear at the very start of the body (begin=0);
+	// end is the number of Unicode code points in the URL.
+	if avatarURL != "" {
+		end := len([]rune(avatarURL))
+		fmt.Fprintf(&extras,
+			"<reference xmlns='urn:xmpp:reference:0' begin='0' end='%d' type='data' uri='%s'>"+
+				"<media-sharing xmlns='urn:xmpp:sims:1'>"+
+				"<file xmlns='urn:xmpp:jingle:apps:file-transfer:5'>"+
+				"<media-type>%s</media-type>"+
+				"</file>"+
+				"<sources>"+
+				"<reference xmlns='urn:xmpp:reference:0' type='data' uri='%s'/>"+
+				"</sources>"+
+				"</media-sharing>"+
+				"</reference>",
+			end,
+			xmlEscape(avatarURL),
+			xmlEscape(mimeTypeFromURL(avatarURL)),
+			xmlEscape(avatarURL),
+		)
 	}
 
-	// Build a stanza with both a plain-text <body> fallback and an XHTML-IM <html> block.
-	// Clients that don't support XEP-0071 will display the plain text body.
+	// XEP-0393 (Message Styling): hint so clients know the body uses styling markers.
+	extras.WriteString("<styling xmlns='urn:xmpp:styling:0'/>")
+
 	stanza := fmt.Sprintf(
 		"<message to='%s' type='%s' xml:lang='en' id='%s'>"+
 			"<body>%s</body>"+
-			"<html xmlns='http://jabber.org/protocol/xhtml-im'>"+
-			"<body xmlns='http://www.w3.org/1999/xhtml'>%s</body>"+
-			"</html>"+
+			"%s"+
 			"</message>",
 		xmlEscape(to),
 		xmlEscape(msgType),
 		randomID(),
-		xmlEscape(plain),
-		html, // already-built HTML; content must be valid XHTML
+		xmlEscape(body),
+		extras.String(),
 	)
 	_, err := c.conn.SendOrg(stanza)
 	if err != nil {
-		return fmt.Errorf("sending HTML message to %s: %w", to, err)
+		return fmt.Errorf("sending message to %s: %w", to, err)
 	}
 	return nil
 }
@@ -148,4 +166,20 @@ func randomID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// mimeTypeFromURL guesses the image MIME type from the URL extension.
+// Defaults to image/png, which covers GitHub .png avatar URLs and most forge APIs.
+func mimeTypeFromURL(u string) string {
+	lower := strings.ToLower(u)
+	switch {
+	case strings.Contains(lower, ".jpg"), strings.Contains(lower, ".jpeg"):
+		return "image/jpeg"
+	case strings.Contains(lower, ".gif"):
+		return "image/gif"
+	case strings.Contains(lower, ".webp"):
+		return "image/webp"
+	default:
+		return "image/png"
+	}
 }

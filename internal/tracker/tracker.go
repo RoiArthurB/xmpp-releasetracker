@@ -1,8 +1,6 @@
 package tracker
 
 import (
-	"bytes"
-	"encoding/xml"
 	"fmt"
 	"log"
 	"sort"
@@ -126,9 +124,9 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 	}
 
 	for _, r := range newReleases {
-		plain, html := formatRelease(b.Name(), r)
+		body, avatarURL := formatRelease(b.Name(), r)
 		for _, target := range notify {
-			if err := t.sendNotification(target, plain, html); err != nil {
+			if err := t.sendNotification(target, body, avatarURL); err != nil {
 				log.Printf("Sending notification to %s: %v", target.JID, err)
 			}
 		}
@@ -145,12 +143,12 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 	return nil
 }
 
-func (t *Tracker) sendNotification(target config.NotifyTarget, plain, html string) error {
+func (t *Tracker) sendNotification(target config.NotifyTarget, body, avatarURL string) error {
 	switch target.Type {
 	case "muc":
-		return t.xmpp.SendMUC(target.JID, plain, html)
+		return t.xmpp.SendMUC(target.JID, body, avatarURL)
 	case "direct":
-		return t.xmpp.SendDirect(target.JID, plain, html)
+		return t.xmpp.SendDirect(target.JID, body, avatarURL)
 	default:
 		return fmt.Errorf("unknown notify type: %s", target.Type)
 	}
@@ -172,59 +170,48 @@ func mergeNotify(defaults, extras []config.NotifyTarget) []config.NotifyTarget {
 	return result
 }
 
-// formatRelease returns a plain-text message and an XHTML-IM body for the given release.
-func formatRelease(backendName string, r backend.Release) (plain, html string) {
+// formatRelease returns the message body and the avatar URL for a release.
+//
+// Body format (XEP-0393 Message Styling):
+//
+//	https://avatar.url/image.png      ← first line when avatar available (XEP-0385 SIMS)
+//	*[Github] owner/repo — v1.0.0*    ← bold via Message Styling
+//	https://github.com/.../tag/v1.0.0
+//
+//	Release notes (truncated)...
+//
+// avatarURL is returned separately so the caller can pass it to the XMPP
+// client, which uses it to set the correct begin/end offsets in the SIMS
+// reference element.
+func formatRelease(backendName string, r backend.Release) (body, avatarURL string) {
 	label := strings.ToUpper(backendName[:1]) + backendName[1:]
 
 	title := r.TagName
 	if r.Name != "" && r.Name != r.TagName {
-		title = fmt.Sprintf("%s %q", r.TagName, r.Name)
+		title = r.TagName + " \u201c" + r.Name + "\u201d"
 	}
 
-	// Plain text (unchanged behaviour)
-	plain = fmt.Sprintf("[%s] %s — %s\n%s", label, r.RepoSlug, title, r.URL)
-	if r.Body != "" {
-		plain += "\n\n" + truncateBody(r.Body)
-	}
-
-	// XHTML-IM body
-	html = buildHTML(r, title)
-	return
-}
-
-// buildHTML constructs the XHTML-IM body for a release notification.
-// It includes an avatar image when AvatarURL is set.
-func buildHTML(r backend.Release, title string) string {
 	var b strings.Builder
 
-	// Header line: [avatar] repo-link — tag "name"
-	b.WriteString("<p>")
+	// XEP-0385: avatar URL must be the very first line of the body so the
+	// SIMS reference can point to it at offset begin=0.
 	if r.AvatarURL != "" {
-		fmt.Fprintf(&b, `<img src="%s" alt="avatar" height="32" width="32"/> `,
-			xmlEscape(r.AvatarURL))
+		avatarURL = r.AvatarURL
+		b.WriteString(r.AvatarURL)
+		b.WriteByte('\n')
 	}
-	fmt.Fprintf(&b, `<a href="%s">%s</a> &#x2014; %s`,
-		xmlEscape(r.RepoURL),
-		xmlEscape(r.RepoSlug),
-		xmlEscape(title),
-	)
-	b.WriteString("</p>")
 
-	// Release URL
-	fmt.Fprintf(&b, `<p><a href="%s">%s</a></p>`,
-		xmlEscape(r.URL),
-		xmlEscape(r.URL),
-	)
+	// XEP-0393: wrap the notification headline in *...* for bold rendering.
+	fmt.Fprintf(&b, "*[%s] %s \u2014 %s*\n", label, r.RepoSlug, title)
+	b.WriteString(r.URL)
 
-	// Release body: escape text content, convert newlines to <br/>
 	if r.Body != "" {
-		body := truncateBody(r.Body)
-		b.WriteString("<p>")
-		b.WriteString(strings.ReplaceAll(xmlEscape(body), "\n", "<br/>"))
-		b.WriteString("</p>")
+		b.WriteString("\n\n")
+		b.WriteString(truncateBody(r.Body))
 	}
 
-	return b.String()
+	body = b.String()
+	return
 }
 
 // truncateBody limits release notes to maxBodyLines lines and maxBodyChars characters.
@@ -239,11 +226,4 @@ func truncateBody(body string) string {
 		result = result[:maxBodyChars] + "…"
 	}
 	return result
-}
-
-// xmlEscape escapes s for use in XML text content or attribute values.
-func xmlEscape(s string) string {
-	var buf bytes.Buffer
-	xml.EscapeText(&buf, []byte(s))
-	return buf.String()
 }
