@@ -1,0 +1,12 @@
+services:
+  releasetracker:
+    build: .
+    restart: unless-stopped
+    volumes:
+      # Mount your config file (read-only).
+      - ./config.yml:/etc/xmpp-releasetracker/config.yml:ro
+      # Persist the SQLite database across container restarts.
+      - releasetracker-data:/data
+
+volumes:
+  releasetracker-data:

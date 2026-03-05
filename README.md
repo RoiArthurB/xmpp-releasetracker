@@ -147,6 +147,51 @@ Watches all projects inside a GitLab group:
 
 The `-config` flag defaults to `config.yml` in the current directory.
 
+## Docker
+
+### Build and run manually
+
+```bash
+docker build -t xmpp-releasetracker .
+docker run -d \
+  --name releasetracker \
+  --restart unless-stopped \
+  -v "$(pwd)/config.yml:/etc/xmpp-releasetracker/config.yml:ro" \
+  -v releasetracker-data:/data \
+  xmpp-releasetracker
+```
+
+### Docker Compose
+
+```bash
+cp config.yml.example config.yml
+$EDITOR config.yml        # fill in your credentials
+docker compose up -d
+```
+
+To follow the logs:
+
+```bash
+docker compose logs -f
+```
+
+To rebuild after a code change:
+
+```bash
+docker compose up -d --build
+```
+
+### Database path in containers
+
+The container exposes `/data` as a volume for persistent storage. Set the database path in your `config.yml` accordingly:
+
+```yaml
+database:
+  path: "/data/releasetracker.db"
+```
+
+The config file itself is mounted read-only at `/etc/xmpp-releasetracker/config.yml` and never written to by the bot.
+
 ## Notification format
 
 ```
@@ -173,6 +218,8 @@ On each poll cycle the tracker:
 ```
 main.go
 config.yml.example
+Dockerfile
+compose.yml
 internal/
   config/       # YAML loading and validation
   store/        # SQLite persistence (last-seen releases)
