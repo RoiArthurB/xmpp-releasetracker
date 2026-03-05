@@ -212,6 +212,20 @@ https://github.com/owner/repo/releases/tag/v1.2.3
 Release notes here, capped at 10 lines / 2000 characters...
 ```
 
+Messages use [XEP-0393 Message Styling](https://xmpp.org/extensions/xep-0393.html) for the bold headline (`*…*`).
+
+### Inline images
+
+The bot attaches the repository owner's avatar as an inline image using [XEP-0385 Stateless Inline Media Sharing (SIMS)](https://xmpp.org/extensions/xep-0385.html). Support varies by client:
+
+| Client | Image displayed? |
+|--------|-----------------|
+| MonocleChat (iOS/Android) | ✅ Yes |
+| Gajim | ❌ No |
+| Movim | ❌ No (sanitizes external `<img>` tags) |
+
+**Note:** XEP-0385 has _Deferred_ status. Contributions to improve client compatibility are welcome!
+
 ## How it works
 
 On each poll cycle the tracker:

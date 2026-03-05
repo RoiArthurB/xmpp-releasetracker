@@ -56,9 +56,6 @@ type ghRelease struct {
 	Body        string    `json:"body"`
 	HTMLURL     string    `json:"html_url"`
 	Prerelease  bool      `json:"prerelease"`
-	Author      struct {
-		AvatarURL string `json:"avatar_url"`
-	} `json:"author"`
 }
 
 type ghTag struct {
@@ -86,6 +83,8 @@ func (g *GitHub) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 		return g.getRepoTags(slug, limit)
 	}
 
+	owner := strings.SplitN(slug, "/", 2)[0]
+	avatarURL := fmt.Sprintf("https://github.com/%s.png", owner)
 	repoURL := fmt.Sprintf("https://github.com/%s", slug)
 	result := make([]backend.Release, 0, len(releases))
 	for _, r := range releases {
@@ -98,7 +97,7 @@ func (g *GitHub) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 			Body:         r.Body,
 			URL:          r.HTMLURL,
 			IsPrerelease: r.Prerelease,
-			AvatarURL:    r.Author.AvatarURL,
+			AvatarURL:    avatarURL,
 		})
 	}
 	return result, nil

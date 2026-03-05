@@ -54,9 +54,6 @@ type giteaRelease struct {
 	PublishedAt time.Time `json:"published_at"`
 	HTMLURL     string    `json:"html_url"`
 	Prerelease  bool      `json:"prerelease"`
-	Publisher   struct {
-		AvatarURL string `json:"avatar_url"`
-	} `json:"publisher"`
 }
 
 type giteaTag struct {
@@ -66,6 +63,20 @@ type giteaTag struct {
 type giteaRepo struct {
 	FullName string `json:"full_name"`
 	HTMLURL  string `json:"html_url"`
+}
+
+type giteaRepoInfo struct {
+	Owner struct {
+		AvatarURL string `json:"avatar_url"`
+	} `json:"owner"`
+}
+
+func (g *Gitea) getOwnerAvatarURL(slug string) string {
+	var info giteaRepoInfo
+	if err := g.get("/api/v1/repos/"+slug, &info); err != nil {
+		return ""
+	}
+	return info.Owner.AvatarURL
 }
 
 func (g *Gitea) GetRepoReleases(slug string, limit int) ([]backend.Release, error) {
@@ -79,6 +90,7 @@ func (g *Gitea) GetRepoReleases(slug string, limit int) ([]backend.Release, erro
 		return g.getRepoTags(slug, limit)
 	}
 
+	avatarURL := g.getOwnerAvatarURL(slug)
 	repoURL := g.instanceURL + "/" + slug
 	result := make([]backend.Release, 0, len(releases))
 	for _, r := range releases {
@@ -91,7 +103,7 @@ func (g *Gitea) GetRepoReleases(slug string, limit int) ([]backend.Release, erro
 			Body:         r.Body,
 			URL:          r.HTMLURL,
 			IsPrerelease: r.Prerelease,
-			AvatarURL:    r.Publisher.AvatarURL,
+			AvatarURL:    avatarURL,
 		})
 	}
 	return result, nil

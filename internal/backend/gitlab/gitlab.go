@@ -56,10 +56,7 @@ type glRelease struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	ReleasedAt  time.Time `json:"released_at"`
-	Author      struct {
-		AvatarURL string `json:"avatar_url"`
-	} `json:"author"`
-	Links struct {
+	Links       struct {
 		Self string `json:"self"`
 	} `json:"_links"`
 }
@@ -76,6 +73,21 @@ type glProject struct {
 	WebURL            string `json:"web_url"`
 }
 
+type glProjectInfo struct {
+	Namespace struct {
+		AvatarURL string `json:"avatar_url"`
+	} `json:"namespace"`
+}
+
+func (g *GitLab) getOwnerAvatarURL(slug string) string {
+	encoded := url.PathEscape(slug)
+	var info glProjectInfo
+	if err := g.get("/api/v4/projects/"+encoded, &info); err != nil {
+		return ""
+	}
+	return info.Namespace.AvatarURL
+}
+
 func (g *GitLab) GetRepoReleases(slug string, limit int) ([]backend.Release, error) {
 	encoded := url.PathEscape(slug)
 	path := fmt.Sprintf("/api/v4/projects/%s/releases?per_page=%d", encoded, limit)
@@ -88,6 +100,7 @@ func (g *GitLab) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 		return g.getRepoTags(slug, limit)
 	}
 
+	avatarURL := g.getOwnerAvatarURL(slug)
 	repoURL := g.instanceURL + "/" + slug
 	result := make([]backend.Release, 0, len(releases))
 	for _, r := range releases {
@@ -103,7 +116,7 @@ func (g *GitLab) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 			PublishedAt: r.ReleasedAt,
 			Body:        r.Description,
 			URL:         releaseURL,
-			AvatarURL:   r.Author.AvatarURL,
+			AvatarURL:   avatarURL,
 		})
 	}
 	return result, nil
