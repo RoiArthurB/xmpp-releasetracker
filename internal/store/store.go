@@ -9,23 +9,16 @@ import (
 )
 
 const schema = `
-CREATE TABLE IF NOT EXISTS last_seen (
+CREATE TABLE IF NOT EXISTS seen_releases (
     backend      TEXT NOT NULL,
     repo_slug    TEXT NOT NULL,
     tag_name     TEXT NOT NULL,
-    published_at DATETIME NOT NULL,
-    PRIMARY KEY (backend, repo_slug)
+    published_at DATETIME,
+    PRIMARY KEY (backend, repo_slug, tag_name)
 );`
 
 type Store struct {
 	db *sqlx.DB
-}
-
-type LastSeen struct {
-	Backend     string    `db:"backend"`
-	RepoSlug    string    `db:"repo_slug"`
-	TagName     string    `db:"tag_name"`
-	PublishedAt time.Time `db:"published_at"`
 }
 
 func Open(path string) (*Store, error) {
@@ -39,28 +32,25 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-func (s *Store) GetLastSeen(backend, repoSlug string) (*LastSeen, error) {
-	var ls LastSeen
-	err := s.db.Get(&ls, `SELECT backend, repo_slug, tag_name, published_at FROM last_seen WHERE backend=? AND repo_slug=?`, backend, repoSlug)
+// HasSeen returns true if this release tag has already been recorded for the repo.
+func (s *Store) HasSeen(backend, repoSlug, tagName string) (bool, error) {
+	var count int
+	err := s.db.Get(&count,
+		`SELECT COUNT(*) FROM seen_releases WHERE backend=? AND repo_slug=? AND tag_name=?`,
+		backend, repoSlug, tagName)
 	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("querying last_seen: %w", err)
+		return false, fmt.Errorf("querying seen_releases: %w", err)
 	}
-	return &ls, nil
+	return count > 0, nil
 }
 
-func (s *Store) SetLastSeen(backend, repoSlug, tagName string, publishedAt time.Time) error {
-	_, err := s.db.Exec(`
-		INSERT INTO last_seen (backend, repo_slug, tag_name, published_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(backend, repo_slug) DO UPDATE SET
-			tag_name=excluded.tag_name,
-			published_at=excluded.published_at`,
+// MarkSeen records a release so it won't be announced again.
+func (s *Store) MarkSeen(backend, repoSlug, tagName string, publishedAt time.Time) error {
+	_, err := s.db.Exec(
+		`INSERT OR IGNORE INTO seen_releases (backend, repo_slug, tag_name, published_at) VALUES (?, ?, ?, ?)`,
 		backend, repoSlug, tagName, publishedAt)
 	if err != nil {
-		return fmt.Errorf("updating last_seen: %w", err)
+		return fmt.Errorf("inserting seen_releases: %w", err)
 	}
 	return nil
 }

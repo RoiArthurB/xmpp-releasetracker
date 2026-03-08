@@ -3,7 +3,6 @@ package tracker
 import (
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +16,9 @@ const (
 	maxBodyLines  = 10
 	maxBodyChars  = 2000
 	releasesLimit = 5
+	// recentWindow matches the Ruby project: releases older than this are not
+	// announced (avoids notification floods on first run or after downtime).
+	recentWindow = 7 * 24 * time.Hour
 )
 
 // BackendRegistry maps backend name → Backend instance.
@@ -95,78 +97,40 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 		return nil
 	}
 
-	lastSeen, err := t.store.GetLastSeen(b.Name(), slug)
-	if err != nil {
-		return fmt.Errorf("loading last_seen: %w", err)
+	// APIs return newest first; reverse to process oldest-first so notifications
+	// arrive in chronological order.
+	for i, j := 0, len(releases)-1; i < j; i, j = i+1, j-1 {
+		releases[i], releases[j] = releases[j], releases[i]
 	}
 
-	// First run: record the latest release, and announce it if it's less than 24h old.
-	if lastSeen == nil {
-		// APIs return newest first; also check by timestamp as a tiebreaker.
-		latest := releases[0]
-		for _, r := range releases[1:] {
-			if r.PublishedAt.After(latest.PublishedAt) {
-				latest = r
-			}
+	for _, r := range releases {
+		seen, err := t.store.HasSeen(b.Name(), slug, r.TagName)
+		if err != nil {
+			return fmt.Errorf("checking seen for %s: %w", r.TagName, err)
 		}
-		if !latest.PublishedAt.IsZero() && time.Since(latest.PublishedAt) < 24*time.Hour {
-			body, avatarURL := formatRelease(b.Name(), latest)
-			for _, target := range notify {
-				if err := t.sendNotification(target, body, avatarURL); err != nil {
-					log.Printf("Sending notification to %s: %v", target.JID, err)
-				}
-			}
-		}
-		return t.store.SetLastSeen(b.Name(), slug, latest.TagName, latest.PublishedAt)
-	}
 
-	// Determine new releases to announce.
-	var newReleases []backend.Release
-	if releases[0].PublishedAt.IsZero() || lastSeen.PublishedAt.IsZero() {
-		// No usable timestamps (tag fallback or stale DB entry): use API position
-		// as a recency proxy — APIs return newest first.
-		// Find lastSeen; everything before it in the list is newer.
-		lastSeenIdx := len(releases) // if not found, treat all as new
-		for i, r := range releases {
-			if r.TagName == lastSeen.TagName {
-				lastSeenIdx = i
-				break
-			}
+		// Record the release regardless of whether we announce it, so we
+		// never re-announce on subsequent polls.
+		if err := t.store.MarkSeen(b.Name(), slug, r.TagName, r.PublishedAt); err != nil {
+			return fmt.Errorf("marking seen for %s: %w", r.TagName, err)
 		}
-		// Reverse so we announce oldest-first.
-		for i := lastSeenIdx - 1; i >= 0; i-- {
-			newReleases = append(newReleases, releases[i])
-		}
-	} else {
-		// Both sides have timestamps: sort ascending and filter by time.
-		sort.Slice(releases, func(i, j int) bool {
-			return releases[i].PublishedAt.Before(releases[j].PublishedAt)
-		})
-		for _, r := range releases {
-			if r.TagName == lastSeen.TagName {
-				continue
-			}
-			if !r.PublishedAt.After(lastSeen.PublishedAt) {
-				continue
-			}
-			newReleases = append(newReleases, r)
-		}
-	}
 
-	for _, r := range newReleases {
+		if seen {
+			continue
+		}
+
+		// Skip releases outside the recency window to avoid notification floods
+		// on first run or after extended downtime (mirrors Ruby project behaviour).
+		if !r.PublishedAt.IsZero() && time.Since(r.PublishedAt) > recentWindow {
+			log.Printf("[%s] %s: skipping old release %s (%s)", b.Name(), slug, r.TagName, r.PublishedAt.Format(time.RFC3339))
+			continue
+		}
+
 		body, avatarURL := formatRelease(b.Name(), r)
 		for _, target := range notify {
 			if err := t.sendNotification(target, body, avatarURL); err != nil {
 				log.Printf("Sending notification to %s: %v", target.JID, err)
 			}
-		}
-	}
-
-	// Update last_seen to the most recent release processed.
-	if len(newReleases) > 0 {
-		latest := newReleases[len(newReleases)-1]
-		if err := t.store.SetLastSeen(b.Name(), slug, latest.TagName, latest.PublishedAt); err != nil {
-			return fmt.Errorf("updating last_seen: %w", err)
 		}
 	}
 
