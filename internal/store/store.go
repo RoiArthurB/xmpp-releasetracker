@@ -44,6 +44,19 @@ func (s *Store) HasSeen(backend, repoSlug, tagName string) (bool, error) {
 	return count > 0, nil
 }
 
+// IsFirstSeen returns true if no releases have been recorded yet for this repo.
+// Used to suppress announcements on the initial discovery of a repo.
+func (s *Store) IsFirstSeen(backend, repoSlug string) (bool, error) {
+	var count int
+	err := s.db.Get(&count,
+		`SELECT COUNT(*) FROM seen_releases WHERE backend=? AND repo_slug=?`,
+		backend, repoSlug)
+	if err != nil {
+		return false, fmt.Errorf("querying seen_releases: %w", err)
+	}
+	return count == 0, nil
+}
+
 // MarkSeen records a release so it won't be announced again.
 func (s *Store) MarkSeen(backend, repoSlug, tagName string, publishedAt time.Time) error {
 	_, err := s.db.Exec(

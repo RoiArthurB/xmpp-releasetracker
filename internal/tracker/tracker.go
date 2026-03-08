@@ -97,6 +97,15 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 		return nil
 	}
 
+	// On first discovery of a repo, snapshot current releases without announcing
+	// them to avoid flooding on initial setup or DB reset. This also safely handles
+	// repos that return releases without timestamps (e.g. tag-only repos), where
+	// we cannot apply a recency filter.
+	firstRun, err := t.store.IsFirstSeen(b.Name(), slug)
+	if err != nil {
+		return fmt.Errorf("checking first run: %w", err)
+	}
+
 	// APIs return newest first; reverse to process oldest-first so notifications
 	// arrive in chronological order.
 	for i, j := 0, len(releases)-1; i < j; i, j = i+1, j-1 {
@@ -115,12 +124,13 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 			return fmt.Errorf("marking seen for %s: %w", r.TagName, err)
 		}
 
-		if seen {
+		if seen || firstRun {
 			continue
 		}
 
 		// Skip releases outside the recency window to avoid notification floods
-		// on first run or after extended downtime (mirrors Ruby project behaviour).
+		// after extended downtime (mirrors Ruby project behaviour).
+		// Releases without a timestamp are always announced when genuinely new.
 		if !r.PublishedAt.IsZero() && time.Since(r.PublishedAt) > recentWindow {
 			log.Printf("[%s] %s: skipping old release %s (%s)", b.Name(), slug, r.TagName, r.PublishedAt.Format(time.RFC3339))
 			continue
@@ -216,8 +226,8 @@ func truncateBody(body string) string {
 		lines = append(lines, "…")
 	}
 	result := strings.Join(lines, "\n")
-	if len(result) > maxBodyChars {
-		result = result[:maxBodyChars] + "…"
+	if len([]rune(result)) > maxBodyChars {
+		result = string([]rune(result)[:maxBodyChars]) + "…"
 	}
 	return result
 }
