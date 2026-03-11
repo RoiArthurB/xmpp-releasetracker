@@ -14,9 +14,15 @@ import (
 	"github.com/roiarthurb/xmpp-releasetracker/internal/xmpp"
 )
 
+// version is set at build time via -ldflags "-X main.version=x.y.z".
+// It defaults to "dev" for local builds.
+var version = "dev"
+
 func main() {
 	configPath := flag.String("config", "config.yml", "path to config file")
 	flag.Parse()
+
+	log.Printf("xmpp-releasetracker %s starting", version)
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
