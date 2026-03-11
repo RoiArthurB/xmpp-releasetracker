@@ -154,7 +154,7 @@ func (c *Client) DiscardIncoming() {
 		for {
 			_, err := c.conn.Recv()
 			if err != nil {
-				if !strings.Contains(err.Error(), "use of closed network connection") {
+				if !strings.Contains(err.Error(), "use of closed network connection") && err.Error() != "EOF" {
 					log.Printf("XMPP recv error: %v", err)
 				}
 				return
