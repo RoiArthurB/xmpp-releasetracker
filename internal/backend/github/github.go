@@ -1,7 +1,6 @@
 package github
 
 import (
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"net/http"
@@ -37,20 +36,7 @@ func (g *GitHub) get(url string, out interface{}) error {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("HTTP GET %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("HTTP GET %s: %w", url, backend.ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP GET %s: status %d", url, resp.StatusCode)
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return backend.DoJSON(g.client, req, out)
 }
 
 type ghRepo struct {
@@ -103,11 +89,8 @@ func (g *GitHub) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 		return nil, fmt.Errorf("HTTP GET %s: %w", url, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("HTTP GET %s: %w", url, backend.ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP GET %s: status %d", url, resp.StatusCode)
+	if err := backend.CheckResponse(resp, url); err != nil {
+		return nil, err
 	}
 
 	var feed atomFeed

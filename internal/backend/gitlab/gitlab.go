@@ -1,7 +1,6 @@
 package gitlab
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -30,28 +29,14 @@ func New(instanceURL, token string) *GitLab {
 func (g *GitLab) Name() string { return "gitlab" }
 
 func (g *GitLab) get(path string, out interface{}) error {
-	reqURL := g.instanceURL + path
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := http.NewRequest("GET", g.instanceURL+path, nil)
 	if err != nil {
 		return err
 	}
 	if g.token != "" {
 		req.Header.Set("PRIVATE-TOKEN", g.token)
 	}
-
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("HTTP GET %s: %w", reqURL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("HTTP GET %s: %w", reqURL, backend.ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP GET %s: status %d", reqURL, resp.StatusCode)
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return backend.DoJSON(g.client, req, out)
 }
 
 type glRelease struct {
