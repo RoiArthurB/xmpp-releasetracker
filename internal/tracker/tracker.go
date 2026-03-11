@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -30,14 +31,16 @@ type Tracker struct {
 	backends BackendRegistry
 	store    *store.Store
 	xmpp     *xmpp.Client
+	verbose  bool
 }
 
-func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc *xmpp.Client) *Tracker {
+func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc *xmpp.Client, verbose bool) *Tracker {
 	return &Tracker{
 		cfg:      cfg,
 		backends: backends,
 		store:    st,
 		xmpp:     xc,
+		verbose:  verbose,
 	}
 }
 
@@ -70,7 +73,13 @@ func (t *Tracker) poll() {
 
 		for _, slug := range slugs {
 			if err := t.processRepo(b, slug, mergeNotify(t.cfg.DefaultNotify, entry.Notify)); err != nil {
-				log.Printf("[%s] %s: %v", b.Name(), slug, err)
+				if errors.Is(err, backend.ErrNotFound) {
+					if t.verbose {
+						log.Printf("[%s] %s: no releases found (404)", b.Name(), slug)
+					}
+				} else {
+					log.Printf("[%s] %s: %v", b.Name(), slug, err)
+				}
 			}
 		}
 	}

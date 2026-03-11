@@ -44,6 +44,9 @@ func (g *GitHub) get(url string, out interface{}) error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("HTTP GET %s: %w", url, backend.ErrNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP GET %s: status %d", url, resp.StatusCode)
 	}
@@ -100,6 +103,9 @@ func (g *GitHub) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 		return nil, fmt.Errorf("HTTP GET %s: %w", url, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("HTTP GET %s: %w", url, backend.ErrNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP GET %s: status %d", url, resp.StatusCode)
 	}

@@ -45,6 +45,9 @@ func (g *GitLab) get(path string, out interface{}) error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("HTTP GET %s: %w", reqURL, backend.ErrNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP GET %s: status %d", reqURL, resp.StatusCode)
 	}

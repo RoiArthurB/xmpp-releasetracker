@@ -1,6 +1,12 @@
 package backend
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrNotFound is returned when a repository or resource does not exist on the forge.
+var ErrNotFound = errors.New("not found")
 
 // Release represents a software release or tag from a repository.
 type Release struct {

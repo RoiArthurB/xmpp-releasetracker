@@ -16,6 +16,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "config.yml", "path to config file")
+	verbose := flag.Bool("verbose", false, "log warnings for repos without releases (404s)")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -86,7 +87,7 @@ func main() {
 	}
 
 	// Start tracker loop.
-	t := tracker.New(cfg, backends, st, xc)
+	t := tracker.New(cfg, backends, st, xc, *verbose)
 	t.Run()
 }
 
