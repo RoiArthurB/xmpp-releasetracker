@@ -76,9 +76,6 @@ func main() {
 	}
 	defer xc.Close()
 
-	xc.DiscardIncoming()
-	xc.SendKeepAlives()
-
 	// Join all MUC rooms.
 	rooms := collectMUCRooms(cfg)
 	for _, room := range rooms {

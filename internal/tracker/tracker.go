@@ -45,6 +45,9 @@ func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc *xmpp
 func (t *Tracker) Run() {
 	for {
 		log.Println("Starting poll cycle...")
+		if err := t.xmpp.Reconnect(); err != nil {
+			log.Printf("XMPP reconnect failed: %v", err)
+		}
 		t.poll()
 		log.Printf("Poll cycle done. Sleeping %d seconds.", t.cfg.Interval)
 		time.Sleep(time.Duration(t.cfg.Interval) * time.Second)

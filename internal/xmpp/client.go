@@ -17,16 +17,33 @@ const keepAliveInterval = 30 * time.Second
 
 // Client wraps a go-xmpp connection.
 type Client struct {
-	conn    *goxmpp.Client
-	mucNick string
+	conn     *goxmpp.Client
+	mucNick  string
+	jid      string
+	password string
+	server   string
+	rooms    []string
 }
 
 // Connect establishes an XMPP connection using the given credentials.
 func Connect(jid, password, server, mucNick string) (*Client, error) {
-	opts := goxmpp.Options{
-		Host:                         server,
-		User:                         jid,
-		Password:                     password,
+	c := &Client{mucNick: mucNick, jid: jid, password: password, server: server}
+	if err := c.Reconnect(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// Reconnect drops the current connection (if any) and re-establishes it,
+// then restarts background goroutines and rejoins all MUC rooms.
+func (c *Client) Reconnect() error {
+	if c.conn != nil {
+		_ = c.conn.Close()
+	}
+	conn, err := goxmpp.Options{
+		Host:                         c.server,
+		User:                         c.jid,
+		Password:                     c.password,
 		StartTLS:                     true,
 		InsecureAllowUnencryptedAuth: false,
 		NoTLS:                        false,
@@ -34,23 +51,30 @@ func Connect(jid, password, server, mucNick string) (*Client, error) {
 		Session:                      false,
 		Status:                       "available",
 		StatusMessage:                "",
-	}
-
-	conn, err := opts.NewClient()
+	}.NewClient()
 	if err != nil {
-		return nil, fmt.Errorf("connecting to XMPP server: %w", err)
+		return fmt.Errorf("connecting to XMPP server: %w", err)
 	}
-
-	return &Client{conn: conn, mucNick: mucNick}, nil
+	c.conn = conn
+	c.DiscardIncoming()
+	c.SendKeepAlives()
+	for _, room := range c.rooms {
+		if _, err := c.conn.SendPresence(goxmpp.Presence{To: room + "/" + c.mucNick}); err != nil {
+			log.Printf("Rejoining MUC %s after reconnect: %v", room, err)
+		}
+	}
+	return nil
 }
 
-// JoinMUC sends an initial presence to the given MUC room JID.
+// JoinMUC sends an initial presence to the given MUC room JID and remembers
+// the room so it can be rejoined automatically after a reconnect.
 func (c *Client) JoinMUC(roomJID string) error {
 	fullJID := roomJID + "/" + c.mucNick
 	_, err := c.conn.SendPresence(goxmpp.Presence{To: fullJID})
 	if err != nil {
 		return fmt.Errorf("joining MUC %s: %w", roomJID, err)
 	}
+	c.rooms = append(c.rooms, roomJID)
 	return nil
 }
 
@@ -112,7 +136,13 @@ func (c *Client) sendMessage(to, msgType, body, avatarURL string) error {
 	)
 	_, err := c.conn.SendOrg(stanza)
 	if err != nil {
-		return fmt.Errorf("sending message to %s: %w", to, err)
+		log.Printf("XMPP send error (%v), reconnecting and retrying...", err)
+		if rerr := c.Reconnect(); rerr != nil {
+			return fmt.Errorf("sending message to %s: %w (reconnect failed: %v)", to, err, rerr)
+		}
+		if _, err = c.conn.SendOrg(stanza); err != nil {
+			return fmt.Errorf("sending message to %s: %w", to, err)
+		}
 	}
 	return nil
 }
