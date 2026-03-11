@@ -60,6 +60,7 @@ type Config struct {
 	Backends      BackendsConfig  `yaml:"backends"`
 	Database      DatabaseConfig  `yaml:"database"`
 	Interval      int             `yaml:"interval"`
+	Verbose       bool            `yaml:"verbose"`        // log 404s for repos without releases
 	DefaultNotify []NotifyTarget  `yaml:"default_notify"` // optional; applied to every tracked repo
 	Tracking      []TrackingEntry `yaml:"tracking"`
 }

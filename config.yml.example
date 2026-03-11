@@ -20,6 +20,7 @@ database:
   path: "./releasetracker.db"
 
 interval: 3600   # seconds between full poll cycles (default 3600)
+verbose: false   # log warnings for repos without releases (404s)
 
 # Optional. These targets receive notifications for every tracked repo,
 # regardless of per-entry notify lists. Useful to always get a personal copy.
