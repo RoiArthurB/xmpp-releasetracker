@@ -116,12 +116,13 @@ func resolveInstanceBackends(cfg *config.Config, backends tracker.BackendRegistr
 	return backends
 }
 
-// collectMUCRooms returns the unique set of MUC room JIDs from all tracking entries.
+// collectMUCRooms returns the unique set of MUC room JIDs from all notify
+// targets, including default_notify.
 func collectMUCRooms(cfg *config.Config) []string {
 	seen := make(map[string]struct{})
 	var rooms []string
-	for _, entry := range cfg.Tracking {
-		for _, target := range entry.Notify {
+	add := func(targets []config.NotifyTarget) {
+		for _, target := range targets {
 			if target.Type == "muc" {
 				if _, ok := seen[target.JID]; !ok {
 					seen[target.JID] = struct{}{}
@@ -129,6 +130,10 @@ func collectMUCRooms(cfg *config.Config) []string {
 				}
 			}
 		}
+	}
+	add(cfg.DefaultNotify)
+	for _, entry := range cfg.Tracking {
+		add(entry.Notify)
 	}
 	return rooms
 }

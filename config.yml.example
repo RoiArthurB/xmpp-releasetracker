@@ -26,9 +26,12 @@ skip_prereleases: false # global default: skip pre-releases for all tracked repo
 # Optional. These targets receive notifications for every tracked repo,
 # regardless of per-entry notify lists. Useful to always get a personal copy.
 # Duplicates with per-entry notify targets are ignored automatically.
+# MUC rooms listed here are joined automatically on startup.
 default_notify:
   - jid: "you@example.com"
     type: direct
+  - jid: "general@conference.example.com"
+    type: muc
 
 tracking:
   # Individual GitHub repo

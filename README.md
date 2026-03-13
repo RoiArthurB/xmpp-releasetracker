@@ -16,7 +16,7 @@ A Go bot that watches repositories on GitHub, GitLab, and Gitea for new releases
 
 ## Requirements
 
-- Go 1.21+
+- Go 1.25+
 - An XMPP account for the bot
 
 ## Installation
@@ -264,10 +264,10 @@ Dockerfile
 compose.yml
 internal/
   config/       # YAML loading and validation
-  store/        # SQLite persistence (last-seen releases)
+  store/        # SQLite persistence (seen releases)
   backend/
     backend.go  # Backend interface and Release type
-    github/     # GitHub REST API
+    github/     # GitHub Atom feed
     gitlab/     # GitLab REST API
     gitea/      # Gitea REST API
   tracker/      # Polling loop and notification logic
