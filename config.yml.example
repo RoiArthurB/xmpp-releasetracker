@@ -19,8 +19,9 @@ backends:
 database:
   path: "./releasetracker.db"
 
-interval: 3600   # seconds between full poll cycles (default 3600)
-verbose: false   # log warnings for repos without releases (404s)
+interval: 3600          # seconds between full poll cycles (default 3600)
+verbose: false          # log warnings for repos without releases (404s)
+skip_prereleases: false # global default: skip pre-releases for all tracked repos (default false)
 
 # Optional. These targets receive notifications for every tracked repo,
 # regardless of per-entry notify lists. Useful to always get a personal copy.
@@ -49,11 +50,12 @@ tracking:
       - jid: "devroom@conference.example.com"
         type: muc
 
-  # Gitea repo
+  # Gitea repo — skip pre-releases for this entry only
   - type: repo
     backend: gitea
     slug: "owner/repo"
     instance: "https://gitea.example.com"
+    skip_prereleases: true
     notify:
       - jid: "room@conference.example.com"
         type: muc

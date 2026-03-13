@@ -9,8 +9,9 @@ A Go bot that watches repositories on GitHub, GitLab, and Gitea for new releases
 - Monitors **GitHub**, **GitLab** (self-hosted or gitlab.com), and **Gitea** instances
 - Tracks individual repos, user starred repos, organizations, and GitLab groups
 - Sends notifications to **XMPP MUC rooms** and **direct messages**
-- Persists the last-seen release in SQLite — no duplicate announcements after a restart
-- Silent on first run: records the current latest release without announcing it
+- Persists seen releases in SQLite — no duplicate announcements after a restart
+- Silent on first run: snapshots current releases without announcing them
+- Optional pre-release filtering per entry or globally
 - Pure Go, no CGO required
 
 ## Requirements
@@ -61,6 +62,7 @@ database:
 
 interval: 3600                  # Seconds between poll cycles. Default: 3600
 verbose: false                  # Log warnings for repos without releases (404s). Default: false. Optional
+skip_prereleases: false         # Skip pre-releases globally. Default: false. Optional
 
 # Optional. Receives notifications for every tracked repo.
 # Per-entry notify lists are additive on top of this.
@@ -78,6 +80,20 @@ tracking:
 ### Tracking entries
 
 Each entry in `tracking` describes what to watch and where to send notifications.
+
+All entries accept an optional `skip_prereleases` field that overrides the global setting for that entry:
+
+```yaml
+- type: repo
+  backend: gitea
+  slug: "owner/repo"
+  skip_prereleases: true        # only stable releases for this repo
+  notify:
+    - jid: "room@conference.example.com"
+      type: muc
+```
+
+> **Backend support:** `skip_prereleases` currently filters pre-releases on **Gitea** only. GitHub's Atom feed and GitLab's API do not expose a pre-release flag, so the option has no effect on those backends.
 
 #### Single repository
 
@@ -233,11 +249,11 @@ On each poll cycle the tracker:
 
 1. Resolves the list of repos for each tracking entry (direct slug, or expanded from stars/org/group)
 2. Fetches the latest releases from the backend API (up to 5 per repo)
-3. Compares against the last-seen release stored in SQLite
-4. Announces any releases newer than the last-seen entry, in chronological order
-5. Updates the last-seen record
+3. Checks each release against the `seen_releases` table in SQLite
+4. Announces unseen releases published within the last 7 days, in chronological order
+5. Records every release as seen so it is never announced again
 
-**First run:** the latest release is recorded silently, with no announcement. This prevents flooding notifications for repos that already have many releases.
+**First run / new repo:** all currently known releases are recorded silently without announcement. This prevents flooding when a repo is first added to the config.
 
 ## Project structure
 

@@ -71,8 +71,9 @@ func (t *Tracker) poll() {
 			continue
 		}
 
+		skipPrereleases := t.cfg.SkipPrereleases || entry.SkipPrereleases
 		for _, slug := range slugs {
-			if err := t.processRepo(b, slug, mergeNotify(t.cfg.DefaultNotify, entry.Notify)); err != nil {
+			if err := t.processRepo(b, slug, mergeNotify(t.cfg.DefaultNotify, entry.Notify), skipPrereleases); err != nil {
 				if errors.Is(err, backend.ErrNotFound) {
 					if t.verbose {
 						log.Printf("[%s] %s: no releases found (404)", b.Name(), slug)
@@ -100,7 +101,7 @@ func (t *Tracker) resolveRepos(b backend.Backend, entry *config.TrackingEntry) (
 	}
 }
 
-func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.NotifyTarget) error {
+func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.NotifyTarget, skipPrereleases bool) error {
 	releases, err := b.GetRepoReleases(slug, releasesLimit)
 	if err != nil {
 		return fmt.Errorf("fetching releases: %w", err)
@@ -137,6 +138,10 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 		}
 
 		if seen || firstRun {
+			continue
+		}
+
+		if skipPrereleases && r.IsPrerelease {
 			continue
 		}
 

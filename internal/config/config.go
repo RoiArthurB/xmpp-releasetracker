@@ -45,24 +45,26 @@ type NotifyTarget struct {
 }
 
 type TrackingEntry struct {
-	Type     string         `yaml:"type"`     // "repo", "user_stars", "org", "group"
-	Backend  string         `yaml:"backend"`  // "github", "gitlab", "gitea"
-	Slug     string         `yaml:"slug"`     // for type=repo
-	Username string         `yaml:"username"` // for type=user_stars
-	Org      string         `yaml:"org"`      // for type=org
-	Group    string         `yaml:"group"`    // for type=group
-	Instance string         `yaml:"instance"` // GitLab/Gitea instance URL
-	Notify   []NotifyTarget `yaml:"notify"`
+	Type            string         `yaml:"type"`             // "repo", "user_stars", "org", "group"
+	Backend         string         `yaml:"backend"`          // "github", "gitlab", "gitea"
+	Slug            string         `yaml:"slug"`             // for type=repo
+	Username        string         `yaml:"username"`         // for type=user_stars
+	Org             string         `yaml:"org"`              // for type=org
+	Group           string         `yaml:"group"`            // for type=group
+	Instance        string         `yaml:"instance"`         // GitLab/Gitea instance URL
+	Notify          []NotifyTarget `yaml:"notify"`
+	SkipPrereleases bool           `yaml:"skip_prereleases"` // if true, pre-releases are not announced
 }
 
 type Config struct {
-	XMPP          XMPPConfig      `yaml:"xmpp"`
-	Backends      BackendsConfig  `yaml:"backends"`
-	Database      DatabaseConfig  `yaml:"database"`
-	Interval      int             `yaml:"interval"`
-	Verbose       bool            `yaml:"verbose"`        // log 404s for repos without releases
-	DefaultNotify []NotifyTarget  `yaml:"default_notify"` // optional; applied to every tracked repo
-	Tracking      []TrackingEntry `yaml:"tracking"`
+	XMPP            XMPPConfig      `yaml:"xmpp"`
+	Backends        BackendsConfig  `yaml:"backends"`
+	Database        DatabaseConfig  `yaml:"database"`
+	Interval        int             `yaml:"interval"`
+	Verbose         bool            `yaml:"verbose"`          // log 404s for repos without releases
+	SkipPrereleases bool            `yaml:"skip_prereleases"` // global default; can be overridden per entry
+	DefaultNotify   []NotifyTarget  `yaml:"default_notify"`   // optional; applied to every tracked repo
+	Tracking        []TrackingEntry `yaml:"tracking"`
 }
 
 func Load(path string) (*Config, error) {
