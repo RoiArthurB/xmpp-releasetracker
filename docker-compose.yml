@@ -1,6 +1,7 @@
 services:
   releasetracker:
-    build: .
+    #build: .
+    image: ghcr.io/roiarthurb/xmpp-releasetracker:latest
     restart: unless-stopped
     volumes:
       # Mount your config file (read-only).
