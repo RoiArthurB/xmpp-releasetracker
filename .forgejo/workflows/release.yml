@@ -44,7 +44,9 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        # Full URL required: Forgejo resolves bare action names against its
+        # data.forgejo.org mirror, which does not host goreleaser-action.
+        uses: https://github.com/goreleaser/goreleaser-action@v6
         with:
           version: latest
           args: release --clean --config .goreleaser.forgejo.yml
