@@ -17,17 +17,19 @@ const keepAliveInterval = 30 * time.Second
 
 // Client wraps a go-xmpp connection.
 type Client struct {
-	conn     *goxmpp.Client
-	mucNick  string
-	jid      string
-	password string
-	server   string
-	rooms    []string
+	conn      *goxmpp.Client
+	mucNick   string
+	jid       string
+	password  string
+	server    string
+	rooms     []string
+	statusMsg string
 }
 
 // Connect establishes an XMPP connection using the given credentials.
-func Connect(jid, password, server, mucNick string) (*Client, error) {
-	c := &Client{mucNick: mucNick, jid: jid, password: password, server: server}
+// statusMsg is the human-readable presence status shown to other XMPP users.
+func Connect(jid, password, server, mucNick, statusMsg string) (*Client, error) {
+	c := &Client{mucNick: mucNick, jid: jid, password: password, server: server, statusMsg: statusMsg}
 	if err := c.Reconnect(); err != nil {
 		return nil, err
 	}
@@ -50,7 +52,7 @@ func (c *Client) Reconnect() error {
 		Debug:                        false,
 		Session:                      false,
 		Status:                       "available",
-		StatusMessage:                "",
+		StatusMessage:                c.statusMsg,
 	}.NewClient()
 	if err != nil {
 		return fmt.Errorf("connecting to XMPP server: %w", err)

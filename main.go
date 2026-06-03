@@ -76,7 +76,7 @@ func main() {
 
 	// Connect to XMPP.
 	log.Printf("Connecting to XMPP server %s as %s...", cfg.XMPP.Server, cfg.XMPP.JID)
-	xc, err := xmpp.Connect(cfg.XMPP.JID, cfg.XMPP.Password, cfg.XMPP.Server, cfg.XMPP.MUCNick)
+	xc, err := xmpp.Connect(cfg.XMPP.JID, cfg.XMPP.Password, cfg.XMPP.Server, cfg.XMPP.MUCNick, "xmpp-releasetracker "+version)
 	if err != nil {
 		log.Fatalf("XMPP connect: %v", err)
 	}
