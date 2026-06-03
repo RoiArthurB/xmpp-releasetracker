@@ -33,6 +33,13 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # Use the daemon's built-in builder instead of the docker-container
+          # driver. The latter boots a moby/buildkit container on the workflow
+          # network, whose embedded DNS (127.0.0.11) cannot reach Docker Hub on
+          # this runner. The daemon resolves registries fine (it pulled the job
+          # image), so building through it avoids the timeout.
+          driver: docker
 
       # REGISTRY_USERNAME and REGISTRY_PASSWORD must be set as repo secrets.
       # REGISTRY_PASSWORD can be a Forgejo access token with package:write scope.
