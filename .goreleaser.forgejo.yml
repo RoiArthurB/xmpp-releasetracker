@@ -1,0 +1,75 @@
+version: 2
+
+gitea_urls:
+  api: https://git.arthurbrugiere.fr/api/v1/
+  download: https://git.arthurbrugiere.fr/
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - ldflags:
+      - "-s -w -X main.version={{.Version}}"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - "386"
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: darwin
+        goarch: "386"
+      - goos: windows
+        goarch: arm
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+dockers:
+  - image_templates:
+      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+
+  - image_templates:
+      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}"
+    image_templates:
+      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
+      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
+
+  - name_template: "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:latest"
+    image_templates:
+      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
+      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
