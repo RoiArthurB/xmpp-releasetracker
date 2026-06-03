@@ -156,11 +156,14 @@ func (c *Client) sendMessage(to, msgType, body, avatarURL string) error {
 }
 
 // DiscardIncoming starts a goroutine that discards all incoming stanzas.
-// This is required to keep the connection alive.
+// This is required to keep the connection alive. The connection is captured
+// locally so the goroutine binds to one connection and exits after a
+// Reconnect replaces it, rather than following the new c.conn.
 func (c *Client) DiscardIncoming() {
+	conn := c.conn
 	go func() {
 		for {
-			_, err := c.conn.Recv()
+			_, err := conn.Recv()
 			if err != nil {
 				if !strings.Contains(err.Error(), "use of closed network connection") && err.Error() != "EOF" {
 					log.Printf("XMPP recv error: %v", err)
@@ -173,13 +176,16 @@ func (c *Client) DiscardIncoming() {
 
 // SendKeepAlives starts a goroutine that periodically sends a whitespace
 // keep-alive to prevent the server from closing an idle connection during
-// long poll cycles.
+// long poll cycles. The connection is captured locally so that after a
+// Reconnect the old goroutine sends on the now-closed connection, errors out,
+// and returns — otherwise each Reconnect would leak a keep-alive goroutine.
 func (c *Client) SendKeepAlives() {
+	conn := c.conn
 	go func() {
 		ticker := time.NewTicker(keepAliveInterval)
 		defer ticker.Stop()
 		for range ticker.C {
-			if _, err := c.conn.SendKeepAlive(); err != nil {
+			if _, err := conn.SendKeepAlive(); err != nil {
 				log.Printf("XMPP keep-alive error: %v", err)
 				return
 			}

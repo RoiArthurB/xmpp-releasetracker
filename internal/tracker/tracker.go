@@ -48,9 +48,10 @@ func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc *xmpp
 func (t *Tracker) Run() {
 	for {
 		log.Println("Starting poll cycle...")
-		if err := t.xmpp.Reconnect(); err != nil {
-			log.Printf("XMPP reconnect failed: %v", err)
-		}
+		// The connection is established once at startup and kept alive by
+		// background keep-alives; sendMessage reconnects on send failure.
+		// Reconnecting every cycle would make the bot part and rejoin every
+		// MUC on each interval, spamming occupants with join/leave notices.
 		t.poll()
 		log.Printf("Poll cycle done. Sleeping %d seconds.", t.cfg.Interval)
 		time.Sleep(time.Duration(t.cfg.Interval) * time.Second)

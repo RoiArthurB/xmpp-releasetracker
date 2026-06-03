@@ -5,11 +5,58 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // ErrNotFound is returned when a repository or resource does not exist on the forge.
 var ErrNotFound = errors.New("not found")
+
+// prereleaseTokens are common version-suffix markers indicating a pre-release.
+var prereleaseTokens = []string{
+	"alpha", "beta", "rc", "pre", "preview",
+	"dev", "snapshot", "nightly", "canary", "eap", "milestone",
+}
+
+// LooksLikePrerelease heuristically reports whether a tag/name denotes a
+// pre-release, based on common pre-release identifiers (e.g. "v1.2.0-rc1").
+// It is used by backends (GitHub, GitLab) whose release APIs do not expose an
+// explicit prerelease flag; backends that do (Gitea) should use that instead.
+func LooksLikePrerelease(tagName, name string) bool {
+	for _, s := range []string{tagName, name} {
+		lower := strings.ToLower(s)
+		for _, tok := range prereleaseTokens {
+			if containsToken(lower, tok) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// containsToken reports whether tok appears in s bounded by non-letters on
+// both sides, so "rc" matches "1.0-rc1" but not "search" or "betamax".
+func containsToken(s, tok string) bool {
+	for from := 0; from <= len(s)-len(tok); {
+		i := strings.Index(s[from:], tok)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isLetter(s[i-1])
+		right := i + len(tok)
+		rightOK := right == len(s) || !isLetter(s[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+func isLetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
 
 // CheckResponse validates an HTTP response status code.
 // It returns ErrNotFound (wrapped) on 404, a generic error on any other non-200, and nil on 200.

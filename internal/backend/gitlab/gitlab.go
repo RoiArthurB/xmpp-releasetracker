@@ -105,6 +105,8 @@ func (g *GitLab) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 			Body:        r.Description,
 			URL:         releaseURL,
 			AvatarURL:   avatarURL,
+			// GitLab's releases API exposes no prerelease flag, so infer it.
+			IsPrerelease: backend.LooksLikePrerelease(r.TagName, r.Name),
 		})
 	}
 	return result, nil
@@ -123,12 +125,13 @@ func (g *GitLab) getRepoTags(slug string, limit int) ([]backend.Release, error) 
 	for _, t := range tags {
 		tagURL := fmt.Sprintf("%s/-/tags/%s", repoURL, t.Name)
 		result = append(result, backend.Release{
-			RepoSlug:    slug,
-			RepoURL:     repoURL,
-			TagName:     t.Name,
-			Name:        t.Name,
-			PublishedAt: t.Commit.CreatedAt,
-			URL:         tagURL,
+			RepoSlug:     slug,
+			RepoURL:      repoURL,
+			TagName:      t.Name,
+			Name:         t.Name,
+			PublishedAt:  t.Commit.CreatedAt,
+			URL:          tagURL,
+			IsPrerelease: backend.LooksLikePrerelease(t.Name, t.Name),
 		})
 	}
 	return result, nil

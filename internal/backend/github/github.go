@@ -113,14 +113,16 @@ func (g *GitHub) GetRepoReleases(slug string, limit int) ([]backend.Release, err
 			tagName = e.Link.Href[idx+5:]
 		}
 		result = append(result, backend.Release{
-			RepoSlug:    slug,
-			RepoURL:     repoURL,
-			TagName:     tagName,
-			Name:        e.Title,
-			PublishedAt: e.Updated.Time,
-			Body:        stripHTML(e.Content),
-			URL:         e.Link.Href,
-			AvatarURL:   avatarURL,
+			RepoSlug:     slug,
+			RepoURL:      repoURL,
+			TagName:      tagName,
+			Name:         e.Title,
+			PublishedAt:  e.Updated.Time,
+			Body:         stripHTML(e.Content),
+			URL:          e.Link.Href,
+			AvatarURL:    avatarURL,
+			// The releases.atom feed carries no prerelease flag, so infer it.
+			IsPrerelease: backend.LooksLikePrerelease(tagName, e.Title),
 		})
 	}
 	return result, nil
