@@ -51,13 +51,19 @@ func (c *Client) Reconnect() error {
 		NoTLS:                        false,
 		Debug:                        false,
 		Session:                      false,
-		Status:                       "available",
-		StatusMessage:                c.statusMsg,
+		Status:                       "",
+		StatusMessage:                "",
 	}.NewClient()
 	if err != nil {
 		return fmt.Errorf("connecting to XMPP server: %w", err)
 	}
 	c.conn = conn
+	// Send a proper initial presence: omitting <show> means "available" per RFC 6121.
+	// The library would emit <show>available</show> which is not a valid show value
+	// and causes clients like Gajim to not display the contact as connected.
+	if _, err := c.conn.SendPresence(goxmpp.Presence{Status: c.statusMsg}); err != nil {
+		log.Printf("XMPP initial presence error: %v", err)
+	}
 	c.DiscardIncoming()
 	c.SendKeepAlives()
 	for _, room := range c.rooms {
