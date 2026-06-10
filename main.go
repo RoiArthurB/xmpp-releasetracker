@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/roiarthurb/xmpp-releasetracker/internal/backend"
 	ghbackend "github.com/roiarthurb/xmpp-releasetracker/internal/backend/github"
 	glbackend "github.com/roiarthurb/xmpp-releasetracker/internal/backend/gitlab"
 	giteabackend "github.com/roiarthurb/xmpp-releasetracker/internal/backend/gitea"
@@ -147,5 +146,3 @@ func collectMUCRooms(cfg *config.Config) []string {
 	return rooms
 }
 
-// ensure backend.Backend is used (avoid import cycle lint issues)
-var _ backend.Backend = nil
