@@ -109,5 +109,54 @@ func validate(cfg *Config) error {
 		}
 		cfg.XMPP.Server = parts[1] + ":5222"
 	}
+	if err := validateNotify(cfg.DefaultNotify, "default_notify"); err != nil {
+		return err
+	}
+	for i := range cfg.Tracking {
+		if err := validateTrackingEntry(&cfg.Tracking[i], i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateTrackingEntry checks the entry's backend, type, required field for
+// that type, and notify targets, so typos fail at startup instead of being
+// logged once per poll cycle.
+func validateTrackingEntry(e *TrackingEntry, i int) error {
+	switch e.Backend {
+	case "github", "gitlab", "gitea":
+	default:
+		return fmt.Errorf("tracking[%d]: unknown backend %q (expected github, gitlab or gitea)", i, e.Backend)
+	}
+	var required, value string
+	switch e.Type {
+	case "repo":
+		required, value = "slug", e.Slug
+	case "user_stars":
+		required, value = "username", e.Username
+	case "org":
+		required, value = "org", e.Org
+	case "group":
+		required, value = "group", e.Group
+	default:
+		return fmt.Errorf("tracking[%d]: unknown type %q (expected repo, user_stars, org or group)", i, e.Type)
+	}
+	if value == "" {
+		return fmt.Errorf("tracking[%d]: type %q requires the %s field", i, e.Type, required)
+	}
+	return validateNotify(e.Notify, fmt.Sprintf("tracking[%d].notify", i))
+}
+
+// validateNotify checks that every notify target has a JID and a known type.
+func validateNotify(targets []NotifyTarget, where string) error {
+	for i, t := range targets {
+		if t.JID == "" {
+			return fmt.Errorf("%s[%d]: jid is required", where, i)
+		}
+		if t.Type != "muc" && t.Type != "direct" {
+			return fmt.Errorf("%s[%d]: unknown type %q (expected muc or direct)", where, i, t.Type)
+		}
+	}
 	return nil
 }
