@@ -76,7 +76,7 @@ func main() {
 
 	// Resolve instance-specific backends for tracking entries.
 	// Entries with an "instance" field map to "backend:instanceURL".
-	backends = resolveInstanceBackends(cfg, backends)
+	resolveInstanceBackends(cfg, backends)
 
 	// Connect to XMPP.
 	log.Printf("Connecting to XMPP server %s as %s...", cfg.XMPP.Server, cfg.XMPP.JID)
@@ -105,24 +105,24 @@ func main() {
 	log.Println("Shutting down.")
 }
 
-// resolveInstanceBackends creates a backend entry for each tracking entry that
-// specifies an instance, keyed by "backend" (the entry's Backend field), so the
-// tracker can look it up directly.
-func resolveInstanceBackends(cfg *config.Config, backends tracker.BackendRegistry) tracker.BackendRegistry {
+// resolveInstanceBackends rewrites the Backend field of each tracking entry
+// that specifies an instance to the registry key "backend:instanceURL", so the
+// tracker looks up the right instance directly. An instance with no matching
+// entry under backends: in the config is a misconfiguration; previously it
+// silently fell back to whichever instance registered first, sending queries
+// to the wrong server, so fail fast instead.
+func resolveInstanceBackends(cfg *config.Config, backends tracker.BackendRegistry) {
 	for i := range cfg.Tracking {
 		entry := &cfg.Tracking[i]
 		if entry.Instance == "" {
 			continue
 		}
 		instanceKey := entry.Backend + ":" + entry.Instance
-		if b, ok := backends[instanceKey]; ok {
-			// Register a temporary key so the tracker uses the right instance.
-			// We rewrite the entry's Backend to the instance-specific key.
-			backends[instanceKey] = b
-			entry.Backend = instanceKey
+		if _, ok := backends[instanceKey]; !ok {
+			log.Fatalf("Tracking entry references instance %q, but no %s instance with that URL is configured under backends", entry.Instance, entry.Backend)
 		}
+		entry.Backend = instanceKey
 	}
-	return backends
 }
 
 // collectMUCRooms returns the unique set of MUC room JIDs from all notify
