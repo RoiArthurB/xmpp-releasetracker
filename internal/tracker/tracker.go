@@ -11,7 +11,6 @@ import (
 	"github.com/roiarthurb/xmpp-releasetracker/internal/backend"
 	"github.com/roiarthurb/xmpp-releasetracker/internal/config"
 	"github.com/roiarthurb/xmpp-releasetracker/internal/store"
-	"github.com/roiarthurb/xmpp-releasetracker/internal/xmpp"
 )
 
 const (
@@ -30,16 +29,23 @@ const (
 // BackendRegistry maps backend name → Backend instance.
 type BackendRegistry map[string]backend.Backend
 
+// Notifier is the part of the XMPP client the tracker needs. It is an
+// interface so the announcement logic can be tested with a fake.
+type Notifier interface {
+	SendMUC(roomJID, body, avatarURL string) error
+	SendDirect(jid, body, avatarURL string) error
+}
+
 // Tracker orchestrates polling all tracking entries.
 type Tracker struct {
 	cfg      *config.Config
 	backends BackendRegistry
 	store    *store.Store
-	xmpp     *xmpp.Client
+	xmpp     Notifier
 	verbose  bool
 }
 
-func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc *xmpp.Client, verbose bool) *Tracker {
+func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc Notifier, verbose bool) *Tracker {
 	return &Tracker{
 		cfg:      cfg,
 		backends: backends,
