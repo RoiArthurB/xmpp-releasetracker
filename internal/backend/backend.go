@@ -12,6 +12,11 @@ import (
 // ErrNotFound is returned when a repository or resource does not exist on the forge.
 var ErrNotFound = errors.New("not found")
 
+// ErrRateLimited is returned when the forge API rejects a request because the
+// client exceeded its rate limit. Callers can detect it with errors.Is and
+// fall back to an unmetered source where one exists.
+var ErrRateLimited = errors.New("rate limited")
+
 // prereleaseTokens are common version-suffix markers indicating a pre-release.
 var prereleaseTokens = []string{
 	"alpha", "beta", "rc", "pre", "preview",
@@ -58,16 +63,34 @@ func isLetter(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
-// CheckResponse validates an HTTP response status code.
-// It returns ErrNotFound (wrapped) on 404, a generic error on any other non-200, and nil on 200.
+// CheckResponse validates an HTTP response status code. It returns ErrNotFound
+// (wrapped) on 404, ErrRateLimited (wrapped) on rate-limit rejections, a
+// generic error on any other non-200, and nil on 200.
 func CheckResponse(resp *http.Response, url string) error {
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("HTTP GET %s: %w", url, ErrNotFound)
+	}
+	if isRateLimited(resp) {
+		return fmt.Errorf("HTTP GET %s: status %d: %w", url, resp.StatusCode, ErrRateLimited)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP GET %s: status %d", url, resp.StatusCode)
 	}
 	return nil
+}
+
+// isRateLimited reports whether resp is a rate-limit rejection: a plain 429,
+// or GitHub's primary (403 with X-RateLimit-Remaining: 0) and secondary
+// (403 with Retry-After) rate-limit responses.
+func isRateLimited(resp *http.Response) bool {
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return resp.Header.Get("X-Ratelimit-Remaining") == "0" ||
+			resp.Header.Get("Retry-After") != ""
+	}
+	return false
 }
 
 // DoJSON executes req, checks the response status, and JSON-decodes the body into out.
