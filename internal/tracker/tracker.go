@@ -54,7 +54,11 @@ func (t *Tracker) Run(ctx context.Context) {
 		// background keep-alives; sendMessage reconnects on send failure.
 		// Reconnecting every cycle would make the bot part and rejoin every
 		// MUC on each interval, spamming occupants with join/leave notices.
-		t.poll()
+		t.poll(ctx)
+		if ctx.Err() != nil {
+			log.Println("Shutdown signal received, stopping tracker.")
+			return
+		}
 		log.Printf("Poll cycle done. Sleeping %d seconds.", t.cfg.Interval)
 		select {
 		case <-ctx.Done():
@@ -65,8 +69,15 @@ func (t *Tracker) Run(ctx context.Context) {
 	}
 }
 
-func (t *Tracker) poll() {
+// poll processes every tracking entry. It checks ctx between repos — an
+// entry like user_stars can expand to hundreds of repos, each costing an
+// HTTP round-trip, so waiting for the full cycle would delay shutdown by
+// minutes. In-flight requests are not cancelled.
+func (t *Tracker) poll(ctx context.Context) {
 	for _, entry := range t.cfg.Tracking {
+		if ctx.Err() != nil {
+			return
+		}
 		b, ok := t.backends[entry.Backend]
 		if !ok {
 			log.Printf("Unknown backend %q in tracking entry", entry.Backend)
@@ -81,6 +92,9 @@ func (t *Tracker) poll() {
 
 		skipPrereleases := t.cfg.SkipPrereleases || entry.SkipPrereleases
 		for _, slug := range slugs {
+			if ctx.Err() != nil {
+				return
+			}
 			if err := t.processRepo(b, slug, mergeNotify(t.cfg.DefaultNotify, entry.Notify), skipPrereleases); err != nil {
 				if errors.Is(err, backend.ErrNotFound) {
 					if t.verbose {
