@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -44,8 +45,9 @@ func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc *xmpp
 	}
 }
 
-// Run starts the polling loop; it blocks until the process exits.
-func (t *Tracker) Run() {
+// Run starts the polling loop; it blocks until ctx is cancelled, then returns
+// so the caller can close the XMPP connection and database cleanly.
+func (t *Tracker) Run(ctx context.Context) {
 	for {
 		log.Println("Starting poll cycle...")
 		// The connection is established once at startup and kept alive by
@@ -54,7 +56,12 @@ func (t *Tracker) Run() {
 		// MUC on each interval, spamming occupants with join/leave notices.
 		t.poll()
 		log.Printf("Poll cycle done. Sleeping %d seconds.", t.cfg.Interval)
-		time.Sleep(time.Duration(t.cfg.Interval) * time.Second)
+		select {
+		case <-ctx.Done():
+			log.Println("Shutdown signal received, stopping tracker.")
+			return
+		case <-time.After(time.Duration(t.cfg.Interval) * time.Second):
+		}
 	}
 }
 

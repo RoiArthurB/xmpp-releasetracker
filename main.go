@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/roiarthurb/xmpp-releasetracker/internal/backend"
 	ghbackend "github.com/roiarthurb/xmpp-releasetracker/internal/backend/github"
@@ -91,9 +95,14 @@ func main() {
 		}
 	}
 
-	// Start tracker loop.
+	// Run the tracker loop until SIGINT/SIGTERM (e.g. docker stop), then
+	// return so the deferred XMPP and database closes actually execute.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	t := tracker.New(cfg, backends, st, xc, cfg.Verbose)
-	t.Run()
+	t.Run(ctx)
+	log.Println("Shutting down.")
 }
 
 // resolveInstanceBackends creates a backend entry for each tracking entry that
