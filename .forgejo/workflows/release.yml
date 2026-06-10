@@ -50,17 +50,22 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Run GoReleaser
-        # Full URL required: Forgejo resolves bare action names against its
-        # data.forgejo.org mirror, which does not host goreleaser-action.
+      # Split install and run: the goreleaser-action injects GITHUB_TOKEN via
+      # core.exportVariable before calling the binary, which GoReleaser v2
+      # rejects when GITEA_TOKEN is also set ("multiple tokens found").
+      # install-only puts the binary on PATH without running it, so the
+      # subsequent run: step can unset GITHUB_TOKEN before invoking goreleaser.
+      - name: Install GoReleaser
         uses: https://github.com/goreleaser/goreleaser-action@v6
         with:
           version: latest
-          args: release --clean --config .goreleaser.forgejo.yml
+          install-only: true
+
+      - name: Run GoReleaser
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          # Forgejo Actions injects GITHUB_TOKEN automatically for compatibility;
-          # GoReleaser v2 rejects multiple tokens, so explicitly blank it out.
-          GITHUB_TOKEN: ""
           REGISTRY: ${{ env.REGISTRY }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+        run: |
+          unset GITHUB_TOKEN
+          goreleaser release --clean --config .goreleaser.forgejo.yml
