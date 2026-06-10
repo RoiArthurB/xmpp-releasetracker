@@ -16,6 +16,12 @@ import (
 const keepAliveInterval = 30 * time.Second
 
 // Client wraps a go-xmpp connection.
+//
+// Client is NOT safe for concurrent use: c.conn is read and swapped (by
+// Reconnect, including the reconnect-on-send-failure path in sendMessage)
+// without synchronization. Today only the single tracker goroutine sends,
+// which makes this safe; introducing concurrent senders (e.g. parallel
+// polling) requires adding a mutex around conn first.
 type Client struct {
 	conn      *goxmpp.Client
 	mucNick   string
