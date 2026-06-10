@@ -59,5 +59,8 @@ jobs:
           args: release --clean --config .goreleaser.forgejo.yml
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          # Forgejo Actions injects GITHUB_TOKEN automatically for compatibility;
+          # GoReleaser v2 rejects multiple tokens, so explicitly blank it out.
+          GITHUB_TOKEN: ""
           REGISTRY: ${{ env.REGISTRY }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
