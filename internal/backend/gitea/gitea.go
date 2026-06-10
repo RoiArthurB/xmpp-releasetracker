@@ -120,30 +120,42 @@ func (g *Gitea) getRepoTags(slug string, limit int) ([]backend.Release, error) {
 	return result, nil
 }
 
-func (g *Gitea) GetUserStarredRepos(username string) ([]string, error) {
-	path := fmt.Sprintf("/api/v1/users/%s/starred", username)
-	var repos []giteaRepo
-	if err := g.get(path, &repos); err != nil {
-		return nil, err
-	}
-	slugs := make([]string, 0, len(repos))
-	for _, r := range repos {
-		slugs = append(slugs, r.FullName)
+// repoListPageSize is the per-page limit for repo listing endpoints. Gitea
+// caps limit at 50 by default; without an explicit page loop the API silently
+// returns only the first page (30 items by default).
+const repoListPageSize = 50
+
+// getPagedRepos fetches all pages of a repo listing endpoint. basePath must
+// not contain a query string.
+func (g *Gitea) getPagedRepos(basePath string) ([]string, error) {
+	var slugs []string
+	page := 1
+	for {
+		path := fmt.Sprintf("%s?limit=%d&page=%d", basePath, repoListPageSize, page)
+		var repos []giteaRepo
+		if err := g.get(path, &repos); err != nil {
+			return nil, err
+		}
+		if len(repos) == 0 {
+			break
+		}
+		for _, r := range repos {
+			slugs = append(slugs, r.FullName)
+		}
+		if len(repos) < repoListPageSize {
+			break
+		}
+		page++
 	}
 	return slugs, nil
 }
 
+func (g *Gitea) GetUserStarredRepos(username string) ([]string, error) {
+	return g.getPagedRepos(fmt.Sprintf("/api/v1/users/%s/starred", username))
+}
+
 func (g *Gitea) GetOrgRepos(org string) ([]string, error) {
-	path := fmt.Sprintf("/api/v1/orgs/%s/repos", org)
-	var repos []giteaRepo
-	if err := g.get(path, &repos); err != nil {
-		return nil, err
-	}
-	slugs := make([]string, 0, len(repos))
-	for _, r := range repos {
-		slugs = append(slugs, r.FullName)
-	}
-	return slugs, nil
+	return g.getPagedRepos(fmt.Sprintf("/api/v1/orgs/%s/repos", org))
 }
 
 func (g *Gitea) GetGroupRepos(group string) ([]string, error) {

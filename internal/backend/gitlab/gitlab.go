@@ -138,14 +138,24 @@ func (g *GitLab) getRepoTags(slug string, limit int) ([]backend.Release, error) 
 }
 
 func (g *GitLab) GetUserStarredRepos(username string) ([]string, error) {
-	path := fmt.Sprintf("/api/v4/users/%s/starred_projects?per_page=100", username)
-	var projects []glProject
-	if err := g.get(path, &projects); err != nil {
-		return nil, err
-	}
-	slugs := make([]string, 0, len(projects))
-	for _, p := range projects {
-		slugs = append(slugs, p.PathWithNamespace)
+	var slugs []string
+	page := 1
+	for {
+		path := fmt.Sprintf("/api/v4/users/%s/starred_projects?per_page=100&page=%d", username, page)
+		var projects []glProject
+		if err := g.get(path, &projects); err != nil {
+			return nil, err
+		}
+		if len(projects) == 0 {
+			break
+		}
+		for _, p := range projects {
+			slugs = append(slugs, p.PathWithNamespace)
+		}
+		if len(projects) < 100 {
+			break
+		}
+		page++
 	}
 	return slugs, nil
 }
