@@ -3,6 +3,7 @@ package github
 import (
 	"encoding/xml"
 	"fmt"
+	"html"
 	"net/http"
 	"strings"
 	"time"
@@ -142,13 +143,9 @@ func stripHTML(s string) string {
 			b.WriteRune(r)
 		}
 	}
-	text := b.String()
-	text = strings.ReplaceAll(text, "&amp;", "&")
-	text = strings.ReplaceAll(text, "&lt;", "<")
-	text = strings.ReplaceAll(text, "&gt;", ">")
-	text = strings.ReplaceAll(text, "&quot;", "\"")
-	text = strings.ReplaceAll(text, "&#39;", "'")
-	return strings.TrimSpace(text)
+	// html.UnescapeString decodes all entities in a single pass; the previous
+	// ReplaceAll chain decoded "&amp;" first, turning "&amp;lt;" into "<".
+	return strings.TrimSpace(html.UnescapeString(b.String()))
 }
 
 func (g *GitHub) GetUserStarredRepos(username string) ([]string, error) {
