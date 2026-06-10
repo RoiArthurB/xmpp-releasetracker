@@ -47,7 +47,10 @@ xmpp:
 
 backends:
   github:
-    token: "ghp_xxx"            # Optional, but strongly recommended to avoid rate limiting
+    token: "ghp_xxx"            # Optional. With a token, releases are fetched via the REST API
+                                # (authoritative pre-release/draft flags); without one, the
+                                # unmetered Atom feed is used and pre-releases are guessed
+                                # from tag names
   gitlab:
     - url: "https://gitlab.com"
       token: "glpat-xxx"
@@ -93,7 +96,7 @@ All entries accept an optional `skip_prereleases` field that overrides the globa
       type: muc
 ```
 
-> **Backend support:** `skip_prereleases` currently filters pre-releases on **Gitea** only. GitHub's Atom feed and GitLab's API do not expose a pre-release flag, so the option has no effect on those backends.
+> **Backend support:** on **Gitea**, and on **GitHub** when a token is configured, the pre-release flag comes straight from the forge's API and is authoritative. On **GitLab**, and on GitHub without a token (or while rate-limited, when the bot falls back to the Atom feed), pre-releases are detected heuristically from the tag and release name (`-rc1`, `-beta`, `-alpha`, …), so a release marked pre-release on the forge without such a marker will slip through.
 
 #### Single repository
 

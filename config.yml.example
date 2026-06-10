@@ -6,6 +6,9 @@ xmpp:
 
 backends:
   github:
+    # Optional. With a token, releases are fetched via the REST API, whose
+    # pre-release/draft flags are authoritative; without one (or when rate
+    # limited) the Atom feed is used and pre-releases are guessed from tags.
     token: "ghp_xxx"
   gitlab:
     - url: "https://gitlab.com"
