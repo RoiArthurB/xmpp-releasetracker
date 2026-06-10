@@ -21,6 +21,10 @@ const (
 	// recentWindow matches the Ruby project: releases older than this are not
 	// announced (avoids notification floods on first run or after downtime).
 	recentWindow = 7 * 24 * time.Hour
+	// seenReleasesKeep bounds database growth: after each cycle only the
+	// newest N seen releases are kept per repo. Must comfortably exceed
+	// releasesLimit so a pruned release can never reappear in a feed.
+	seenReleasesKeep = 50
 )
 
 // BackendRegistry maps backend name → Backend instance.
@@ -58,6 +62,11 @@ func (t *Tracker) Run(ctx context.Context) {
 		if ctx.Err() != nil {
 			log.Println("Shutdown signal received, stopping tracker.")
 			return
+		}
+		if n, err := t.store.PruneKeepNewest(seenReleasesKeep); err != nil {
+			log.Printf("Pruning seen releases: %v", err)
+		} else if n > 0 {
+			log.Printf("Pruned %d old seen releases.", n)
 		}
 		log.Printf("Poll cycle done. Sleeping %d seconds.", t.cfg.Interval)
 		select {

@@ -68,6 +68,29 @@ func (s *Store) MarkSeen(backend, repoSlug, tagName string, publishedAt time.Tim
 	return nil
 }
 
+// PruneKeepNewest deletes all but the newest keep releases per repository,
+// bounding database growth for long-running deployments. keep must
+// comfortably exceed the number of releases fetched per poll (releasesLimit)
+// so a pruned release can never reappear in a feed and be re-announced.
+// Rows without a timestamp sort last and are pruned first.
+func (s *Store) PruneKeepNewest(keep int) (int64, error) {
+	res, err := s.db.Exec(`
+DELETE FROM seen_releases WHERE rowid IN (
+    SELECT rowid FROM (
+        SELECT rowid,
+               ROW_NUMBER() OVER (
+                   PARTITION BY backend, repo_slug
+                   ORDER BY published_at DESC
+               ) AS rn
+        FROM seen_releases
+    ) WHERE rn > ?
+)`, keep)
+	if err != nil {
+		return 0, fmt.Errorf("pruning seen_releases: %w", err)
+	}
+	return res.RowsAffected()
+}
+
 func (s *Store) Close() error {
 	return s.db.Close()
 }
