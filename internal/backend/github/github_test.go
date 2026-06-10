@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -155,6 +156,45 @@ func TestGetRepoReleasesAtomOnlyWithoutToken(t *testing.T) {
 	if len(releases) != 1 || releases[0].TagName != "v2.0.0-rc1" {
 		t.Errorf("unexpected releases: %+v", releases)
 	}
+}
+
+func TestGetUserStarredReposPaginates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/users/someone/starred" {
+			http.NotFound(w, r)
+			return
+		}
+		page := r.URL.Query().Get("page")
+		switch page {
+		case "1":
+			fmt.Fprint(w, `[`+repoListJSON(100)+`]`)
+		case "2":
+			fmt.Fprint(w, `[`+repoListJSON(30)+`]`)
+		default:
+			t.Errorf("unexpected page %q requested", page)
+			fmt.Fprint(w, `[]`)
+		}
+	}))
+	defer srv.Close()
+
+	g := New("")
+	g.apiBase = srv.URL
+	slugs, err := g.GetUserStarredRepos("someone")
+	if err != nil {
+		t.Fatalf("GetUserStarredRepos: %v", err)
+	}
+	if len(slugs) != 130 {
+		t.Errorf("got %d slugs, want 130 across two pages", len(slugs))
+	}
+}
+
+// repoListJSON returns n comma-separated repo objects.
+func repoListJSON(n int) string {
+	items := make([]string, n)
+	for i := range items {
+		items[i] = fmt.Sprintf(`{"full_name":"owner/repo%d"}`, i)
+	}
+	return strings.Join(items, ",")
 }
 
 func TestGetRepoReleasesAPIErrorIsNotSwallowed(t *testing.T) {
