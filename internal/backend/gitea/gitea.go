@@ -2,6 +2,7 @@ package gitea
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -159,7 +160,15 @@ func (g *Gitea) GetOrgRepos(org string) ([]string, error) {
 }
 
 func (g *Gitea) GetGroupRepos(group string) ([]string, error) {
-	return g.GetOrgRepos(group)
+	slugs, err := g.GetOrgRepos(group)
+	if err != nil {
+		// Fallback: maybe the name is a user namespace, not an org.
+		// Gitea/Forgejo allow the same identifier to be used for users and orgs,
+		// but they are impossible to collide in practice. Warn and try user repos.
+		log.Printf("[gitea] %s: org repos lookup failed: %v, falling back to user repos", group, err)
+		slugs, err = g.GetUserRepos(group)
+	}
+	return slugs, err
 }
 
 func (g *Gitea) GetUserRepos(user string) ([]string, error) {

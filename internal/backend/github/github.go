@@ -251,6 +251,10 @@ func (g *GitHub) GetOrgRepos(org string) ([]string, error) {
 		url := fmt.Sprintf("%s/orgs/%s/repos?per_page=100&page=%d", g.apiBase, org, page)
 		var repos []ghRepo
 		if err := g.get(url, &repos); err != nil {
+			if errors.Is(err, backend.ErrNotFound) {
+				log.Printf("[github] %s: org repos lookup failed: %v, falling back to user repos", org, err)
+				return g.GetUserRepos(org)
+			}
 			return nil, err
 		}
 		if len(repos) == 0 {

@@ -1,7 +1,9 @@
 package gitlab
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -171,6 +173,10 @@ func (g *GitLab) GetGroupRepos(group string) ([]string, error) {
 		path := fmt.Sprintf("/api/v4/groups/%s/projects?per_page=100&page=%d", url.PathEscape(group), page)
 		var projects []glProject
 		if err := g.get(path, &projects); err != nil {
+			if errors.Is(err, backend.ErrNotFound) {
+				log.Printf("[gitlab] %s: group projects lookup failed: %v, falling back to user projects", group, err)
+				return g.GetUserRepos(group)
+			}
 			return nil, err
 		}
 		if len(projects) == 0 {
