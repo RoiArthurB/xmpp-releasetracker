@@ -267,6 +267,29 @@ func (g *GitHub) GetOrgRepos(org string) ([]string, error) {
 	return slugs, nil
 }
 
+func (g *GitHub) GetUserRepos(user string) ([]string, error) {
+	var slugs []string
+	page := 1
+	for {
+		url := fmt.Sprintf("%s/users/%s/repos?per_page=100&page=%d&type=owner", g.apiBase, user, page)
+		var repos []ghRepo
+		if err := g.get(url, &repos); err != nil {
+			return nil, err
+		}
+		if len(repos) == 0 {
+			break
+		}
+		for _, r := range repos {
+			slugs = append(slugs, r.FullName)
+		}
+		if len(repos) < 100 {
+			break
+		}
+		page++
+	}
+	return slugs, nil
+}
+
 func (g *GitHub) GetGroupRepos(_ string) ([]string, error) {
 	return nil, fmt.Errorf("GetGroupRepos not supported for GitHub backend; use GetOrgRepos")
 }

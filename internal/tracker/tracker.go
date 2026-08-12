@@ -133,6 +133,8 @@ func (t *Tracker) resolveRepos(b backend.Backend, entry *config.TrackingEntry) (
 		return b.GetOrgRepos(entry.Org)
 	case "group":
 		return b.GetGroupRepos(entry.Group)
+	case "user":
+		return b.GetUserRepos(entry.User)
 	default:
 		return nil, fmt.Errorf("unknown tracking type: %s", entry.Type)
 	}

@@ -126,4 +126,5 @@ type Backend interface {
 	GetUserStarredRepos(username string) ([]string, error)
 	GetOrgRepos(org string) ([]string, error)
 	GetGroupRepos(group string) ([]string, error)
+	GetUserRepos(user string) ([]string, error)
 }

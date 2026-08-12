@@ -45,10 +45,11 @@ type NotifyTarget struct {
 }
 
 type TrackingEntry struct {
-	Type            string         `yaml:"type"`             // "repo", "user_stars", "org", "group"
+	Type            string         `yaml:"type"`             // "repo", "user_stars", "org", "group", "user"
 	Backend         string         `yaml:"backend"`          // "github", "gitlab", "gitea"
 	Slug            string         `yaml:"slug"`             // for type=repo
 	Username        string         `yaml:"username"`         // for type=user_stars
+	User            string         `yaml:"user"`             // for type=user
 	Org             string         `yaml:"org"`              // for type=org
 	Group           string         `yaml:"group"`            // for type=group
 	Instance        string         `yaml:"instance"`         // GitLab/Gitea instance URL
@@ -139,8 +140,10 @@ func validateTrackingEntry(e *TrackingEntry, i int) error {
 		required, value = "org", e.Org
 	case "group":
 		required, value = "group", e.Group
+	case "user":
+		required, value = "user", e.User
 	default:
-		return fmt.Errorf("tracking[%d]: unknown type %q (expected repo, user_stars, org or group)", i, e.Type)
+		return fmt.Errorf("tracking[%d]: unknown type %q (expected repo, user_stars, org, group or user)", i, e.Type)
 	}
 	if value == "" {
 		return fmt.Errorf("tracking[%d]: type %q requires the %s field", i, e.Type, required)

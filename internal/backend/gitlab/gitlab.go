@@ -186,3 +186,26 @@ func (g *GitLab) GetGroupRepos(group string) ([]string, error) {
 	}
 	return slugs, nil
 }
+
+func (g *GitLab) GetUserRepos(user string) ([]string, error) {
+	var slugs []string
+	page := 1
+	for {
+		path := fmt.Sprintf("/api/v4/users/%s/projects?per_page=100&page=%d", url.PathEscape(user), page)
+		var projects []glProject
+		if err := g.get(path, &projects); err != nil {
+			return nil, err
+		}
+		if len(projects) == 0 {
+			break
+		}
+		for _, p := range projects {
+			slugs = append(slugs, p.PathWithNamespace)
+		}
+		if len(projects) < 100 {
+			break
+		}
+		page++
+	}
+	return slugs, nil
+}

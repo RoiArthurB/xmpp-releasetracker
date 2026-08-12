@@ -25,6 +25,7 @@ func (f *fakeBackend) GetRepoReleases(slug string, limit int) ([]backend.Release
 func (f *fakeBackend) GetUserStarredRepos(string) ([]string, error) { return nil, nil }
 func (f *fakeBackend) GetOrgRepos(string) ([]string, error)        { return nil, nil }
 func (f *fakeBackend) GetGroupRepos(string) ([]string, error)      { return nil, nil }
+func (f *fakeBackend) GetUserRepos(string) ([]string, error)       { return nil, nil }
 
 type sentMessage struct {
 	to, body string

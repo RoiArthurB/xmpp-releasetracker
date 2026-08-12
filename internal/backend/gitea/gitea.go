@@ -161,3 +161,7 @@ func (g *Gitea) GetOrgRepos(org string) ([]string, error) {
 func (g *Gitea) GetGroupRepos(group string) ([]string, error) {
 	return g.GetOrgRepos(group)
 }
+
+func (g *Gitea) GetUserRepos(user string) ([]string, error) {
+	return g.getPagedRepos(fmt.Sprintf("/api/v1/users/%s/repos", user))
+}
