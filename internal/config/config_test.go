@@ -166,6 +166,66 @@ default_notify:
 			`unknown type "groupchat"`,
 		},
 		{
+			"no protocol configured",
+			`interval: 60`,
+			"no chat protocol configured",
+		},
+		{
+			"matrix without credentials",
+			`{matrix: {user_id: "@bot:example.org"}}`,
+			"access_token or matrix.password is required",
+		},
+		{
+			"matrix user_id malformed",
+			`{matrix: {user_id: "bot@example.org", access_token: "t"}}`,
+			"@user:server",
+		},
+		{
+			"matrix homeserver without scheme",
+			`{matrix: {user_id: "@bot:example.org", access_token: "t", homeserver: "matrix.example.org"}}`,
+			"must start with https://",
+		},
+		{
+			"xmpp target without xmpp section",
+			matrixOnlyConfig + `
+default_notify:
+  - {jid: "room@muc.example.org", type: muc}
+`,
+			"needs an xmpp section",
+		},
+		{
+			"matrix target without matrix section",
+			minimalConfig + `
+default_notify:
+  - {id: "#room:example.org", type: matrix_room}
+`,
+			"needs a matrix section",
+		},
+		{
+			"matrix target without id",
+			matrixOnlyConfig + `
+default_notify:
+  - {jid: "#room:example.org", type: matrix_room}
+`,
+			"id is required",
+		},
+		{
+			"matrix room given a user ID",
+			matrixOnlyConfig + `
+default_notify:
+  - {id: "@alice:example.org", type: matrix_room}
+`,
+			"not a Matrix room",
+		},
+		{
+			"matrix direct given a room",
+			matrixOnlyConfig + `
+default_notify:
+  - {id: "#room:example.org", type: matrix_direct}
+`,
+			"not a Matrix user ID",
+		},
+		{
 			"unparseable yaml",
 			"xmpp: [",
 			"parsing config file",
@@ -184,8 +244,66 @@ default_notify:
 	}
 }
 
+const matrixOnlyConfig = `
+matrix:
+  homeserver: "https://matrix.example.org/"
+  user_id: "@bot:example.org"
+  access_token: "syt_xxx"
+`
+
+func TestLoadMatrixOnly(t *testing.T) {
+	cfg, err := loadFromString(t, matrixOnlyConfig+`
+default_notify:
+  - {id: "#releases:example.org", type: matrix_room}
+tracking:
+  - type: repo
+    backend: github
+    slug: "owner/repo"
+    notify:
+      - {id: "!opaqueRoomV12", type: matrix_room}
+      - {id: "!abc:example.org", type: matrix_room}
+      - {id: "@alice:example.org", type: matrix_direct}
+`)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.XMPP.Configured() {
+		t.Error("XMPP reported configured in a Matrix-only config")
+	}
+	if cfg.Matrix.Homeserver != "https://matrix.example.org" {
+		t.Errorf("homeserver = %q, want trailing slash trimmed", cfg.Matrix.Homeserver)
+	}
+	if got := cfg.Tracking[0].Notify[2].Address(); got != "@alice:example.org" {
+		t.Errorf("Address() = %q, want the Matrix ID", got)
+	}
+}
+
+func TestLoadBothProtocols(t *testing.T) {
+	cfg, err := loadFromString(t, minimalConfig+matrixOnlyConfig+`
+default_notify:
+  - {jid: "room@muc.example.org", type: muc}
+  - {id: "#releases:example.org", type: matrix_room}
+`)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.XMPP.Configured() || !cfg.Matrix.Configured() {
+		t.Errorf("want both protocols configured: %+v", cfg)
+	}
+	if cfg.DefaultNotify[0].Address() != "room@muc.example.org" {
+		t.Errorf("XMPP target Address() = %q", cfg.DefaultNotify[0].Address())
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	if _, err := Load(filepath.Join(t.TempDir(), "nope.yml")); err == nil {
 		t.Error("Load on a missing file should fail")
+	}
+}
+
+// The shipped example must stay a valid config, Matrix and XMPP targets included.
+func TestExampleConfigLoads(t *testing.T) {
+	if _, err := Load("../../config.yml.example"); err != nil {
+		t.Fatalf("config.yml.example: %v", err)
 	}
 }

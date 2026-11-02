@@ -12,6 +12,7 @@ import (
 	glbackend "github.com/roiarthurb/xmpp-releasetracker/internal/backend/gitlab"
 	giteabackend "github.com/roiarthurb/xmpp-releasetracker/internal/backend/gitea"
 	"github.com/roiarthurb/xmpp-releasetracker/internal/config"
+	"github.com/roiarthurb/xmpp-releasetracker/internal/matrix"
 	"github.com/roiarthurb/xmpp-releasetracker/internal/store"
 	"github.com/roiarthurb/xmpp-releasetracker/internal/tracker"
 	"github.com/roiarthurb/xmpp-releasetracker/internal/xmpp"
@@ -77,21 +78,52 @@ func main() {
 	// Entries with an "instance" field map to "backend:instanceURL".
 	resolveInstanceBackends(cfg, backends)
 
-	// Connect to XMPP.
-	log.Printf("Connecting to XMPP server %s as %s...", cfg.XMPP.Server, cfg.XMPP.JID)
-	xc, err := xmpp.Connect(cfg.XMPP.JID, cfg.XMPP.Password, cfg.XMPP.Server, cfg.XMPP.MUCNick, "xmpp-releasetracker "+version)
-	if err != nil {
-		log.Fatalf("XMPP connect: %v", err)
-	}
-	defer xc.Close()
-
-	// Join all MUC rooms.
-	rooms := collectMUCRooms(cfg)
-	for _, room := range rooms {
-		log.Printf("Joining MUC room: %s", room)
-		if err := xc.JoinMUC(room); err != nil {
-			log.Printf("Warning: could not join %s: %v", room, err)
+	// Connect to each configured chat protocol. The notifiers stay nil
+	// interfaces (not typed nils) when a protocol is unused.
+	var xn tracker.Notifier
+	if cfg.XMPP.Configured() {
+		log.Printf("Connecting to XMPP server %s as %s...", cfg.XMPP.Server, cfg.XMPP.JID)
+		xc, err := xmpp.Connect(cfg.XMPP.JID, cfg.XMPP.Password, cfg.XMPP.Server, cfg.XMPP.MUCNick, "xmpp-releasetracker "+version)
+		if err != nil {
+			log.Fatalf("XMPP connect: %v", err)
 		}
+		defer xc.Close()
+
+		for _, room := range collectRooms(cfg, config.NotifyMUC) {
+			log.Printf("Joining MUC room: %s", room)
+			if err := xc.JoinMUC(room); err != nil {
+				log.Printf("Warning: could not join %s: %v", room, err)
+			}
+		}
+		xn = xc
+	}
+
+	var mn tracker.MatrixNotifier
+	if cfg.Matrix.Configured() {
+		mc, err := matrix.Connect(matrix.Options{
+			Homeserver:  cfg.Matrix.Homeserver,
+			UserID:      cfg.Matrix.UserID,
+			AccessToken: cfg.Matrix.AccessToken,
+			Password:    cfg.Matrix.Password,
+			DeviceID:    cfg.Matrix.DeviceID,
+		})
+		if err != nil {
+			log.Fatalf("Matrix connect: %v", err)
+		}
+		log.Printf("Connected to Matrix homeserver %s as %s", mc.Homeserver(), cfg.Matrix.UserID)
+		defer func() {
+			if err := mc.Close(); err != nil {
+				log.Printf("Matrix logout: %v", err)
+			}
+		}()
+
+		for _, room := range collectRooms(cfg, config.NotifyMatrixRoom) {
+			log.Printf("Joining Matrix room: %s", room)
+			if err := mc.JoinRoom(room); err != nil {
+				log.Printf("Warning: could not join %s: %v", room, err)
+			}
+		}
+		mn = mc
 	}
 
 	// Run the tracker loop until SIGINT/SIGTERM (e.g. docker stop), then
@@ -99,7 +131,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	t := tracker.New(cfg, backends, st, xc, cfg.Verbose)
+	t := tracker.New(cfg, backends, st, xn, mn, cfg.Verbose)
 	t.Run(ctx)
 	log.Println("Shutting down.")
 }
@@ -124,17 +156,17 @@ func resolveInstanceBackends(cfg *config.Config, backends tracker.BackendRegistr
 	}
 }
 
-// collectMUCRooms returns the unique set of MUC room JIDs from all notify
-// targets, including default_notify.
-func collectMUCRooms(cfg *config.Config) []string {
+// collectRooms returns the unique room addresses of the given notify type
+// (muc or matrix_room) across all notify targets, including default_notify.
+func collectRooms(cfg *config.Config, targetType string) []string {
 	seen := make(map[string]struct{})
 	var rooms []string
 	add := func(targets []config.NotifyTarget) {
 		for _, target := range targets {
-			if target.Type == "muc" {
-				if _, ok := seen[target.JID]; !ok {
-					seen[target.JID] = struct{}{}
-					rooms = append(rooms, target.JID)
+			if target.Type == targetType {
+				if _, ok := seen[target.Address()]; !ok {
+					seen[target.Address()] = struct{}{}
+					rooms = append(rooms, target.Address())
 				}
 			}
 		}
@@ -145,4 +177,3 @@ func collectMUCRooms(cfg *config.Config) []string {
 	}
 	return rooms
 }
-

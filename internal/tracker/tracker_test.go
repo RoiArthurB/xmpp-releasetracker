@@ -34,6 +34,18 @@ func TestMergeNotify(t *testing.T) {
 	}
 }
 
+func TestMergeNotifyMatrixTargets(t *testing.T) {
+	defaults := []config.NotifyTarget{{ID: "#r:example.org", Type: config.NotifyMatrixRoom}}
+	extras := []config.NotifyTarget{
+		{ID: "#r:example.org", Type: config.NotifyMatrixRoom},   // duplicate, dropped
+		{ID: "#r2:example.org", Type: config.NotifyMatrixRoom},  // distinct ID, kept
+		{ID: "@a:example.org", Type: config.NotifyMatrixDirect}, // kept
+	}
+	if got := mergeNotify(defaults, extras); len(got) != 3 {
+		t.Errorf("mergeNotify = %+v, want 3 distinct targets", got)
+	}
+}
+
 func TestMergeNotifyDoesNotMutateDefaults(t *testing.T) {
 	defaults := []config.NotifyTarget{{JID: "a@example.org", Type: "muc"}}
 	mergeNotify(defaults, []config.NotifyTarget{{JID: "b@example.org", Type: "muc"}})
@@ -124,5 +136,31 @@ func TestFormatReleaseNoAvatarNoName(t *testing.T) {
 	}
 	if lines[1] != r.URL {
 		t.Errorf("second line = %q, want release URL", lines[1])
+	}
+}
+
+func TestFormatReleaseMatrix(t *testing.T) {
+	r := backend.Release{
+		RepoSlug:  "owner/repo",
+		TagName:   "v1.0.0",
+		Name:      "First <release>",
+		URL:       "https://github.com/owner/repo/releases/tag/v1.0.0?a=1&b=2",
+		Body:      "line one\n<script>alert(1)</script>",
+		AvatarURL: "https://github.com/owner.png",
+	}
+	plain, html := formatReleaseMatrix("github", r)
+
+	wantPlain := "[Github] owner/repo — v1.0.0 “First <release>”\n" + r.URL + "\n\nline one\n<script>alert(1)</script>"
+	if plain != wantPlain {
+		t.Errorf("plain = %q, want %q", plain, wantPlain)
+	}
+	if strings.Contains(plain, r.AvatarURL) {
+		t.Error("avatar URL leaked into the Matrix body")
+	}
+	wantHTML := "<strong>[Github] owner/repo — v1.0.0 “First &lt;release&gt;”</strong><br>" +
+		`<a href="https://github.com/owner/repo/releases/tag/v1.0.0?a=1&amp;b=2">https://github.com/owner/repo/releases/tag/v1.0.0?a=1&amp;b=2</a>` +
+		"<br><br>line one<br>&lt;script&gt;alert(1)&lt;/script&gt;"
+	if html != wantHTML {
+		t.Errorf("html = %q\nwant   %q", html, wantHTML)
 	}
 }

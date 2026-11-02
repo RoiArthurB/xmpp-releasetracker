@@ -45,6 +45,24 @@ func (f *fakeNotifier) SendDirect(jid, body, _ string) error {
 	return nil
 }
 
+type matrixMessage struct {
+	to, plain, html string
+}
+
+// fakeMatrix records Matrix messages instead of sending them.
+type fakeMatrix struct {
+	room, direct []matrixMessage
+}
+
+func (f *fakeMatrix) SendRoom(room, plain, html string) error {
+	f.room = append(f.room, matrixMessage{room, plain, html})
+	return nil
+}
+func (f *fakeMatrix) SendDirect(user, plain, html string) error {
+	f.direct = append(f.direct, matrixMessage{user, plain, html})
+	return nil
+}
+
 func newTestTracker(t *testing.T) (*Tracker, *fakeNotifier) {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -53,7 +71,7 @@ func newTestTracker(t *testing.T) (*Tracker, *fakeNotifier) {
 	}
 	t.Cleanup(func() { st.Close() })
 	n := &fakeNotifier{}
-	return New(&config.Config{}, nil, st, n, false), n
+	return New(&config.Config{}, nil, st, n, nil, false), n
 }
 
 func release(tag string, age time.Duration) backend.Release {
@@ -220,5 +238,43 @@ func TestDirectAndMUCTargetsBothNotified(t *testing.T) {
 	}
 	if n.direct[0].to != "user@example.org" {
 		t.Errorf("direct message went to %q", n.direct[0].to)
+	}
+}
+
+func TestMatrixAndXMPPTargetsRouted(t *testing.T) {
+	tr, n := newTestTracker(t)
+	m := &fakeMatrix{}
+	tr.matrix = m
+	targets := []config.NotifyTarget{
+		{JID: "room@muc.example.org", Type: config.NotifyMUC},
+		{ID: "#releases:example.org", Type: config.NotifyMatrixRoom},
+		{ID: "@alice:example.org", Type: config.NotifyMatrixDirect},
+	}
+	b := &fakeBackend{releases: []backend.Release{release("v1.0.0", 48*time.Hour)}}
+	if err := tr.processRepo(b, "owner/repo", targets, false); err != nil {
+		t.Fatalf("processRepo: %v", err)
+	}
+	b.releases = append([]backend.Release{release("v1.1.0", time.Hour)}, b.releases...)
+	if err := tr.processRepo(b, "owner/repo", targets, false); err != nil {
+		t.Fatalf("processRepo: %v", err)
+	}
+
+	if len(n.muc) != 1 || len(m.room) != 1 || len(m.direct) != 1 {
+		t.Fatalf("got %d muc / %d matrix room / %d matrix direct, want 1 each", len(n.muc), len(m.room), len(m.direct))
+	}
+	if m.room[0].to != "#releases:example.org" || m.direct[0].to != "@alice:example.org" {
+		t.Errorf("matrix messages misrouted: %+v / %+v", m.room, m.direct)
+	}
+	if !strings.Contains(m.room[0].plain, "v1.1.0") || !strings.Contains(m.room[0].html, "<strong>") {
+		t.Errorf("matrix message not formatted for Matrix: %+v", m.room[0])
+	}
+}
+
+func TestMatrixTargetWithoutMatrixClientDoesNotPanic(t *testing.T) {
+	tr, _ := newTestTracker(t) // no Matrix client
+	r := release("v1.0.0", time.Hour)
+	err := tr.sendNotification(config.NotifyTarget{ID: "#r:example.org", Type: config.NotifyMatrixRoom}, "github", r)
+	if err == nil {
+		t.Error("want an error when Matrix is not configured")
 	}
 }

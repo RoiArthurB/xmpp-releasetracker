@@ -2,13 +2,13 @@
 
 ![Banner logo](.github/images/banner.png)
 
-A Go bot that watches repositories on GitHub, GitLab, and Gitea for new releases or tags, and announces them via XMPP — both to MUC rooms and to individual users.
+A Go bot that watches repositories on GitHub, GitLab, and Gitea for new releases or tags, and announces them via XMPP and/or Matrix — both to group rooms and to individual users.
 
 ## Features
 
 - Monitors **GitHub**, **GitLab** (self-hosted or gitlab.com), and **Gitea** instances
 - Tracks individual repos, user starred repos, organizations, and GitLab groups
-- Sends notifications to **XMPP MUC rooms** and **direct messages**
+- Sends notifications to **XMPP MUC rooms**, **Matrix rooms**, and **direct messages** on either protocol
 - Persists seen releases in SQLite — no duplicate announcements after a restart
 - Silent on first run: snapshots current releases without announcing them
 - Optional pre-release filtering per entry or globally
@@ -17,7 +17,7 @@ A Go bot that watches repositories on GitHub, GitLab, and Gitea for new releases
 ## Requirements
 
 - Go 1.25+
-- An XMPP account for the bot
+- An XMPP account and/or a Matrix account for the bot
 
 ## Installation
 
@@ -38,12 +38,22 @@ $EDITOR config.yml
 
 ### Full reference
 
+At least one of `xmpp` or `matrix` must be configured; you can use either alone, or both at once.
+
 ```yaml
-xmpp:
+xmpp:                           # Optional if matrix is configured
   jid: "bot@example.com"        # Bot's JID
   password: "secret"
   server: "example.com:5222"    # Optional. Defaults to the domain part of the JID on port 5222
   muc_nick: "releasebot"        # Nickname used when joining MUC rooms
+
+matrix:                         # Optional if xmpp is configured
+  user_id: "@releasebot:example.org"
+  homeserver: "https://matrix.example.org"  # Optional. Discovered from the user ID's
+                                            # server via .well-known when omitted
+  access_token: "syt_xxx"       # Recommended. Or use password instead (see below)
+  # password: "secret"          # Logs in at startup and logs out on shutdown
+  # device_id: "RELEASEBOT"     # Optional. Device to reuse on password login
 
 backends:
   github:
@@ -75,6 +85,8 @@ default_notify:
     type: direct
   - jid: "general@conference.example.com"
     type: muc
+  - id: "#releases:matrix.org"
+    type: matrix_room
 
 tracking:
   - ...                         # See "Tracking entries" below
@@ -165,10 +177,40 @@ Watches all projects inside a GitLab group:
 
 ### Notification targets
 
-| Field  | Values              | Description                        |
-|--------|---------------------|------------------------------------|
-| `jid`  | any JID             | Destination address                |
-| `type` | `muc` or `direct`   | MUC room or direct (1:1) message   |
+XMPP targets use the `jid` field, Matrix targets the `id` field:
+
+| `type`          | Address field | Example                              | Description                    |
+|-----------------|---------------|--------------------------------------|--------------------------------|
+| `muc`           | `jid`         | `room@conference.example.com`        | XMPP MUC room                  |
+| `direct`        | `jid`         | `user@example.com`                   | XMPP direct (1:1) message      |
+| `matrix_room`   | `id`          | `#releases:example.org` or `!roomid` | Matrix room, by alias or ID    |
+| `matrix_direct` | `id`          | `@alice:example.org`                 | Matrix direct (1:1) message    |
+
+Both protocols can be mixed in the same `notify` list:
+
+```yaml
+notify:
+  - jid: "room@conference.example.com"
+    type: muc
+  - id: "#releases:example.org"
+    type: matrix_room
+  - id: "@alice:example.org"
+    type: matrix_direct
+```
+
+### Matrix setup
+
+1. Create a Matrix account for the bot.
+2. Get an access token, e.g. by logging in once with any client and copying it (Element: *Settings → Help & About → Access Token*), or via the API:
+   ```bash
+   curl -s -XPOST https://matrix.example.org/_matrix/client/v3/login \
+     -d '{"type":"m.login.password","identifier":{"type":"m.id.user","user":"releasebot"},"password":"secret"}'
+   ```
+   Alternatively, set `password` and the bot logs in on each start (and logs out on shutdown, so it does not pile up devices).
+3. Rooms: the bot joins every `matrix_room` target at startup. Public rooms work as-is; for private rooms, **invite the bot first**. Joining accepts the pending invite.
+4. Direct messages: the bot opens a DM room with the user and invites them on the first notification. Accept the invite to see it (earlier messages are kept). The DM is recorded in the bot's `m.direct` account data, so it is reused across restarts.
+
+> **Limitation: no end-to-end encryption.** The bot does not implement E2EE. It can post in encrypted rooms, but its messages are sent unencrypted, and clients mark them as such. DM rooms it creates itself are unencrypted.
 
 ## Usage
 
@@ -232,9 +274,11 @@ https://github.com/owner/repo/releases/tag/v1.2.3
 Release notes here, capped at 10 lines / 2000 characters...
 ```
 
-Messages use [XEP-0393 Message Styling](https://xmpp.org/extensions/xep-0393.html) for the bold headline (`*…*`).
+On XMPP, messages use [XEP-0393 Message Styling](https://xmpp.org/extensions/xep-0393.html) for the bold headline (`*…*`).
 
-### Inline images
+On Matrix, messages are sent as `m.notice` events (the convention for bots, so other bots don't react to them), with an HTML version that has a bold headline and a clickable link. The owner avatar is not included on Matrix.
+
+### Inline images (XMPP)
 
 The bot attaches the repository owner's avatar as an inline image using [XEP-0385 Stateless Inline Media Sharing (SIMS)](https://xmpp.org/extensions/xep-0385.html). Support varies by client:
 
@@ -275,6 +319,7 @@ internal/
     gitea/      # Gitea REST API
   tracker/      # Polling loop and notification logic
   xmpp/         # XMPP connection, MUC join, message sending
+  matrix/       # Matrix Client-Server API: room join, DMs, message sending
 ```
 
 ## License

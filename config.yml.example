@@ -1,8 +1,16 @@
+# Configure xmpp, matrix, or both. Omit a section you don't use.
 xmpp:
   jid: "bot@example.com"
   password: "secret"
   server: "example.com:5222"   # optional; defaults to domain from JID
   muc_nick: "releasebot"        # nickname used when joining MUC rooms
+
+matrix:
+  user_id: "@releasebot:example.org"
+  homeserver: "https://matrix.example.org"   # optional; discovered via .well-known from user_id
+  access_token: "syt_xxx"                    # recommended
+  # password: "secret"                       # alternative: log in at startup, log out on shutdown
+  # device_id: "RELEASEBOT"                  # optional; device reused on password login
 
 backends:
   github:
@@ -29,12 +37,16 @@ skip_prereleases: false # global default: skip pre-releases for all tracked repo
 # Optional. These targets receive notifications for every tracked repo,
 # regardless of per-entry notify lists. Useful to always get a personal copy.
 # Duplicates with per-entry notify targets are ignored automatically.
-# MUC rooms listed here are joined automatically on startup.
+# MUC and Matrix rooms listed here are joined automatically on startup.
 default_notify:
   - jid: "you@example.com"
     type: direct
   - jid: "general@conference.example.com"
     type: muc
+  - id: "#releases:example.org"            # Matrix room alias or !room_id; joined on startup
+    type: matrix_room
+  - id: "@you:example.org"                 # Matrix DM; the bot opens it and invites you
+    type: matrix_direct
 
 tracking:
   # Individual GitHub repo
@@ -46,6 +58,8 @@ tracking:
         type: muc
       - jid: "user@example.com"
         type: direct
+      - id: "#linux:example.org"
+        type: matrix_room
 
   # GitLab repo (specify which instance)
   - type: repo

@@ -15,6 +15,27 @@ type XMPPConfig struct {
 	MUCNick  string `yaml:"muc_nick"`
 }
 
+// MatrixConfig holds the bot's Matrix account. Authenticate with either an
+// access token (recommended) or a password; with a password the bot logs in at
+// startup and logs out on shutdown so it does not accumulate stale devices.
+type MatrixConfig struct {
+	Homeserver  string `yaml:"homeserver"`   // base URL; discovered from user_id via .well-known when empty
+	UserID      string `yaml:"user_id"`      // @bot:example.org
+	AccessToken string `yaml:"access_token"` // takes precedence over password
+	Password    string `yaml:"password"`
+	DeviceID    string `yaml:"device_id"` // optional; reused on password login
+}
+
+// Configured reports whether a Matrix section was provided at all.
+func (m MatrixConfig) Configured() bool {
+	return m.Homeserver != "" || m.UserID != "" || m.AccessToken != "" || m.Password != ""
+}
+
+// Configured reports whether an XMPP section was provided at all.
+func (x XMPPConfig) Configured() bool {
+	return x.JID != "" || x.Password != "" || x.Server != ""
+}
+
 type GitHubConfig struct {
 	Token string `yaml:"token"`
 }
@@ -39,26 +60,50 @@ type DatabaseConfig struct {
 	Path string `yaml:"path"`
 }
 
+// Notify target types.
+const (
+	NotifyMUC          = "muc"           // XMPP multi-user chat room
+	NotifyDirect       = "direct"        // XMPP 1:1 message
+	NotifyMatrixRoom   = "matrix_room"   // Matrix room, by !room_id or #alias:server
+	NotifyMatrixDirect = "matrix_direct" // Matrix DM, by @user:server
+)
+
 type NotifyTarget struct {
-	JID  string `yaml:"jid"`
-	Type string `yaml:"type"` // "muc" or "direct"
+	JID  string `yaml:"jid"`  // XMPP address, for muc and direct
+	ID   string `yaml:"id"`   // Matrix room ID/alias or user ID, for matrix_room and matrix_direct
+	Type string `yaml:"type"` // see the Notify* constants
+}
+
+// IsMatrix reports whether the target is delivered over Matrix.
+func (t NotifyTarget) IsMatrix() bool {
+	return t.Type == NotifyMatrixRoom || t.Type == NotifyMatrixDirect
+}
+
+// Address returns the destination: the Matrix ID for Matrix targets, the JID
+// otherwise.
+func (t NotifyTarget) Address() string {
+	if t.IsMatrix() {
+		return t.ID
+	}
+	return t.JID
 }
 
 type TrackingEntry struct {
-	Type            string         `yaml:"type"`             // "repo", "user_stars", "org", "group", "user"
-	Backend         string         `yaml:"backend"`          // "github", "gitlab", "gitea"
-	Slug            string         `yaml:"slug"`             // for type=repo
-	Username        string         `yaml:"username"`         // for type=user_stars
-	User            string         `yaml:"user"`             // for type=user
-	Org             string         `yaml:"org"`              // for type=org
-	Group           string         `yaml:"group"`            // for type=group
-	Instance        string         `yaml:"instance"`         // GitLab/Gitea instance URL
+	Type            string         `yaml:"type"`     // "repo", "user_stars", "org", "group", "user"
+	Backend         string         `yaml:"backend"`  // "github", "gitlab", "gitea"
+	Slug            string         `yaml:"slug"`     // for type=repo
+	Username        string         `yaml:"username"` // for type=user_stars
+	User            string         `yaml:"user"`     // for type=user
+	Org             string         `yaml:"org"`      // for type=org
+	Group           string         `yaml:"group"`    // for type=group
+	Instance        string         `yaml:"instance"` // GitLab/Gitea instance URL
 	Notify          []NotifyTarget `yaml:"notify"`
 	SkipPrereleases bool           `yaml:"skip_prereleases"` // if true, pre-releases are not announced
 }
 
 type Config struct {
 	XMPP            XMPPConfig      `yaml:"xmpp"`
+	Matrix          MatrixConfig    `yaml:"matrix"`
 	Backends        BackendsConfig  `yaml:"backends"`
 	Database        DatabaseConfig  `yaml:"database"`
 	Interval        int             `yaml:"interval"`
@@ -87,14 +132,18 @@ func Load(path string) (*Config, error) {
 }
 
 func validate(cfg *Config) error {
-	if cfg.XMPP.JID == "" {
-		return fmt.Errorf("xmpp.jid is required")
+	if !cfg.XMPP.Configured() && !cfg.Matrix.Configured() {
+		return fmt.Errorf("no chat protocol configured: set up an xmpp and/or a matrix section")
 	}
-	if cfg.XMPP.Password == "" {
-		return fmt.Errorf("xmpp.password is required")
+	if cfg.XMPP.Configured() {
+		if err := validateXMPP(&cfg.XMPP); err != nil {
+			return err
+		}
 	}
-	if cfg.XMPP.MUCNick == "" {
-		cfg.XMPP.MUCNick = "releasebot"
+	if cfg.Matrix.Configured() {
+		if err := validateMatrix(&cfg.Matrix); err != nil {
+			return err
+		}
 	}
 	if cfg.Database.Path == "" {
 		cfg.Database.Path = "./releasetracker.db"
@@ -102,29 +151,78 @@ func validate(cfg *Config) error {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 3600
 	}
-	if cfg.XMPP.Server == "" {
-		// derive server from JID domain
-		parts := strings.SplitN(cfg.XMPP.JID, "@", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("xmpp.jid must be in user@domain format")
-		}
-		cfg.XMPP.Server = parts[1] + ":5222"
-	}
-	if err := validateNotify(cfg.DefaultNotify, "default_notify"); err != nil {
+	if err := validateNotify(cfg, cfg.DefaultNotify, "default_notify"); err != nil {
 		return err
 	}
 	for i := range cfg.Tracking {
-		if err := validateTrackingEntry(&cfg.Tracking[i], i); err != nil {
+		if err := validateTrackingEntry(cfg, &cfg.Tracking[i], i); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func validateXMPP(x *XMPPConfig) error {
+	if x.JID == "" {
+		return fmt.Errorf("xmpp.jid is required")
+	}
+	if x.Password == "" {
+		return fmt.Errorf("xmpp.password is required")
+	}
+	if x.MUCNick == "" {
+		x.MUCNick = "releasebot"
+	}
+	if x.Server == "" {
+		// derive server from JID domain
+		parts := strings.SplitN(x.JID, "@", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("xmpp.jid must be in user@domain format")
+		}
+		x.Server = parts[1] + ":5222"
+	}
+	return nil
+}
+
+func validateMatrix(m *MatrixConfig) error {
+	if m.UserID == "" {
+		return fmt.Errorf("matrix.user_id is required")
+	}
+	if !isMatrixUserID(m.UserID) {
+		return fmt.Errorf("matrix.user_id %q must be in @user:server format", m.UserID)
+	}
+	if m.AccessToken == "" && m.Password == "" {
+		return fmt.Errorf("matrix.access_token or matrix.password is required")
+	}
+	m.Homeserver = strings.TrimRight(m.Homeserver, "/")
+	if m.Homeserver != "" && !strings.HasPrefix(m.Homeserver, "https://") && !strings.HasPrefix(m.Homeserver, "http://") {
+		return fmt.Errorf("matrix.homeserver %q must start with https:// or http://", m.Homeserver)
+	}
+	return nil
+}
+
+// isMatrixUserID checks the @localpart:server shape of a Matrix user ID.
+func isMatrixUserID(s string) bool {
+	local, server, ok := strings.Cut(strings.TrimPrefix(s, "@"), ":")
+	return strings.HasPrefix(s, "@") && ok && local != "" && server != ""
+}
+
+// isMatrixRoom accepts a room ID (!opaque, optionally :server; room version 12
+// IDs have no server part) or a room alias (#name:server).
+func isMatrixRoom(s string) bool {
+	switch {
+	case strings.HasPrefix(s, "!"):
+		return len(s) > 1
+	case strings.HasPrefix(s, "#"):
+		name, server, ok := strings.Cut(s[1:], ":")
+		return ok && name != "" && server != ""
+	}
+	return false
+}
+
 // validateTrackingEntry checks the entry's backend, type, required field for
 // that type, and notify targets, so typos fail at startup instead of being
 // logged once per poll cycle.
-func validateTrackingEntry(e *TrackingEntry, i int) error {
+func validateTrackingEntry(cfg *Config, e *TrackingEntry, i int) error {
 	switch e.Backend {
 	case "github", "gitlab", "gitea":
 	default:
@@ -148,17 +246,36 @@ func validateTrackingEntry(e *TrackingEntry, i int) error {
 	if value == "" {
 		return fmt.Errorf("tracking[%d]: type %q requires the %s field", i, e.Type, required)
 	}
-	return validateNotify(e.Notify, fmt.Sprintf("tracking[%d].notify", i))
+	return validateNotify(cfg, e.Notify, fmt.Sprintf("tracking[%d].notify", i))
 }
 
-// validateNotify checks that every notify target has a JID and a known type.
-func validateNotify(targets []NotifyTarget, where string) error {
+// validateNotify checks that every notify target has a known type, the
+// address field that type uses, and that its protocol is configured.
+func validateNotify(cfg *Config, targets []NotifyTarget, where string) error {
 	for i, t := range targets {
-		if t.JID == "" {
-			return fmt.Errorf("%s[%d]: jid is required", where, i)
-		}
-		if t.Type != "muc" && t.Type != "direct" {
-			return fmt.Errorf("%s[%d]: unknown type %q (expected muc or direct)", where, i, t.Type)
+		switch t.Type {
+		case NotifyMUC, NotifyDirect:
+			if t.JID == "" {
+				return fmt.Errorf("%s[%d]: jid is required", where, i)
+			}
+			if !cfg.XMPP.Configured() {
+				return fmt.Errorf("%s[%d]: %s target %q needs an xmpp section", where, i, t.Type, t.JID)
+			}
+		case NotifyMatrixRoom, NotifyMatrixDirect:
+			if t.ID == "" {
+				return fmt.Errorf("%s[%d]: id is required for %s targets", where, i, t.Type)
+			}
+			if t.Type == NotifyMatrixRoom && !isMatrixRoom(t.ID) {
+				return fmt.Errorf("%s[%d]: %q is not a Matrix room ID (!id) or alias (#name:server)", where, i, t.ID)
+			}
+			if t.Type == NotifyMatrixDirect && !isMatrixUserID(t.ID) {
+				return fmt.Errorf("%s[%d]: %q is not a Matrix user ID (@user:server)", where, i, t.ID)
+			}
+			if !cfg.Matrix.Configured() {
+				return fmt.Errorf("%s[%d]: %s target %q needs a matrix section", where, i, t.Type, t.ID)
+			}
+		default:
+			return fmt.Errorf("%s[%d]: unknown type %q (expected muc, direct, matrix_room or matrix_direct)", where, i, t.Type)
 		}
 	}
 	return nil

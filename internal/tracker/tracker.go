@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"strings"
 	"time"
@@ -36,21 +37,31 @@ type Notifier interface {
 	SendDirect(jid, body, avatarURL string) error
 }
 
+// MatrixNotifier is the part of the Matrix client the tracker needs.
+type MatrixNotifier interface {
+	SendRoom(roomIDOrAlias, plain, html string) error
+	SendDirect(userID, plain, html string) error
+}
+
 // Tracker orchestrates polling all tracking entries.
 type Tracker struct {
 	cfg      *config.Config
 	backends BackendRegistry
 	store    *store.Store
-	xmpp     Notifier
+	xmpp     Notifier       // nil when XMPP is not configured
+	matrix   MatrixNotifier // nil when Matrix is not configured
 	verbose  bool
 }
 
-func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc Notifier, verbose bool) *Tracker {
+// New builds a tracker. xc and mc may be nil when the corresponding protocol
+// is not configured; config validation guarantees no target then uses it.
+func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc Notifier, mc MatrixNotifier, verbose bool) *Tracker {
 	return &Tracker{
 		cfg:      cfg,
 		backends: backends,
 		store:    st,
 		xmpp:     xc,
+		matrix:   mc,
 		verbose:  verbose,
 	}
 }
@@ -192,10 +203,9 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 			continue
 		}
 
-		body, avatarURL := formatRelease(b.Name(), r)
 		for _, target := range notify {
-			if err := t.sendNotification(target, body, avatarURL); err != nil {
-				log.Printf("Sending notification to %s: %v", target.JID, err)
+			if err := t.sendNotification(target, b.Name(), r); err != nil {
+				log.Printf("Sending notification to %s: %v", target.Address(), err)
 			}
 		}
 	}
@@ -203,12 +213,26 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 	return nil
 }
 
-func (t *Tracker) sendNotification(target config.NotifyTarget, body, avatarURL string) error {
+func (t *Tracker) sendNotification(target config.NotifyTarget, backendName string, r backend.Release) error {
 	switch target.Type {
-	case "muc":
-		return t.xmpp.SendMUC(target.JID, body, avatarURL)
-	case "direct":
+	case config.NotifyMUC, config.NotifyDirect:
+		if t.xmpp == nil {
+			return errors.New("XMPP is not configured")
+		}
+		body, avatarURL := formatRelease(backendName, r)
+		if target.Type == config.NotifyMUC {
+			return t.xmpp.SendMUC(target.JID, body, avatarURL)
+		}
 		return t.xmpp.SendDirect(target.JID, body, avatarURL)
+	case config.NotifyMatrixRoom, config.NotifyMatrixDirect:
+		if t.matrix == nil {
+			return errors.New("Matrix is not configured")
+		}
+		plain, htmlBody := formatReleaseMatrix(backendName, r)
+		if target.Type == config.NotifyMatrixRoom {
+			return t.matrix.SendRoom(target.ID, plain, htmlBody)
+		}
+		return t.matrix.SendDirect(target.ID, plain, htmlBody)
 	default:
 		return fmt.Errorf("unknown notify type: %s", target.Type)
 	}
@@ -220,10 +244,10 @@ func mergeNotify(defaults, extras []config.NotifyTarget) []config.NotifyTarget {
 	copy(result, defaults)
 	seen := make(map[string]struct{}, len(defaults))
 	for _, t := range defaults {
-		seen[t.JID+"|"+t.Type] = struct{}{}
+		seen[t.Address()+"|"+t.Type] = struct{}{}
 	}
 	for _, t := range extras {
-		if _, ok := seen[t.JID+"|"+t.Type]; !ok {
+		if _, ok := seen[t.Address()+"|"+t.Type]; !ok {
 			result = append(result, t)
 		}
 	}
@@ -244,12 +268,7 @@ func mergeNotify(defaults, extras []config.NotifyTarget) []config.NotifyTarget {
 // client, which uses it to set the correct begin/end offsets in the SIMS
 // reference element.
 func formatRelease(backendName string, r backend.Release) (body, avatarURL string) {
-	label := strings.ToUpper(backendName[:1]) + backendName[1:]
-
-	title := r.TagName
-	if r.Name != "" && r.Name != r.TagName {
-		title = r.TagName + " \u201c" + r.Name + "\u201d"
-	}
+	label, title := releaseLabel(backendName), releaseTitle(r)
 
 	var b strings.Builder
 
@@ -272,6 +291,43 @@ func formatRelease(backendName string, r backend.Release) (body, avatarURL strin
 
 	body = b.String()
 	return
+}
+
+// formatReleaseMatrix returns a plain-text body and its HTML rendering
+// (org.matrix.custom.html) for a release. Everything taken from the forge is
+// HTML-escaped: release notes are untrusted input.
+//
+// The avatar is not included: Matrix clients only display mxc:// images, and
+// re-uploading every owner avatar to the media repository is not worth it.
+func formatReleaseMatrix(backendName string, r backend.Release) (plain, htmlBody string) {
+	headline := fmt.Sprintf("[%s] %s \u2014 %s", releaseLabel(backendName), r.RepoSlug, releaseTitle(r))
+
+	var p, h strings.Builder
+	p.WriteString(headline + "\n" + r.URL)
+	fmt.Fprintf(&h, "<strong>%s</strong><br>", html.EscapeString(headline))
+	if r.URL != "" {
+		u := html.EscapeString(r.URL)
+		fmt.Fprintf(&h, "<a href=\"%s\">%s</a>", u, u)
+	}
+	if r.Body != "" {
+		notes := truncateBody(r.Body)
+		p.WriteString("\n\n" + notes)
+		h.WriteString("<br><br>" + strings.ReplaceAll(html.EscapeString(notes), "\n", "<br>"))
+	}
+	return p.String(), h.String()
+}
+
+// releaseLabel capitalises the backend name for headlines: "github" → "Github".
+func releaseLabel(backendName string) string {
+	return strings.ToUpper(backendName[:1]) + backendName[1:]
+}
+
+// releaseTitle is the tag, followed by the quoted release name when distinct.
+func releaseTitle(r backend.Release) string {
+	if r.Name != "" && r.Name != r.TagName {
+		return r.TagName + " \u201c" + r.Name + "\u201d"
+	}
+	return r.TagName
 }
 
 // truncateBody limits release notes to maxBodyLines lines and maxBodyChars characters.
