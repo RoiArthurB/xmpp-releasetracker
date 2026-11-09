@@ -220,6 +220,18 @@ notify:
 
 The `-config` flag defaults to `config.yml` in the current directory.
 
+On its first poll of a repo, the bot records that repo's existing releases without announcing them, so that setting it up doesn't flood your rooms with old releases. For each repo this logs a line like `[github] owner/repo: first discovery, recorded 5 existing release(s) without announcing`. After that, only new releases are announced: those published in the last 7 days, and not prereleases when `skip_prereleases` is set.
+
+To check that every notify target is reachable without waiting for a release, use `-test-notify`. It connects and sends one test message to each distinct target (`default_notify` plus every `notify` list), then exits. It logs each result and exits with status 1 if any target failed:
+
+```bash
+./xmpp-releasetracker -config config.yml -test-notify
+# with Docker Compose (stop the running service first, so two bot sessions don't run at once):
+docker compose stop releasetracker
+docker compose run --rm releasetracker -config /etc/xmpp-releasetracker/config.yml -test-notify
+docker compose start releasetracker
+```
+
 ## Docker
 
 ### Build and run manually

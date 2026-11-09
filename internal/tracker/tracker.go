@@ -210,16 +210,61 @@ func (t *Tracker) processRepo(b backend.Backend, slug string, notify []config.No
 		}
 	}
 
+	if firstRun {
+		log.Printf("[%s] %s: first discovery, recorded %d existing release(s) without announcing", b.Name(), slug, len(releases))
+	}
+
 	return nil
 }
 
+// testMessage is the body sent by SendTestNotifications.
+const testMessage = "xmpp-releasetracker test notification: this target is set up correctly."
+
+// SendTestNotifications sends one test message to every distinct notify
+// target in the config (default_notify plus each tracking entry's notify
+// list), logging the outcome of each. It returns the number of targets that
+// failed.
+func (t *Tracker) SendTestNotifications() int {
+	targets := t.cfg.DefaultNotify
+	for _, entry := range t.cfg.Tracking {
+		targets = mergeNotify(targets, entry.Notify)
+	}
+	if len(targets) == 0 {
+		log.Println("Test notification: no notify targets configured.")
+		return 0
+	}
+
+	failed := 0
+	for _, target := range targets {
+		err := t.deliver(target,
+			func() (string, string) { return testMessage, "" },
+			func() (string, string) { return testMessage, html.EscapeString(testMessage) })
+		if err != nil {
+			failed++
+			log.Printf("Test notification to %s (%s) FAILED: %v", target.Address(), target.Type, err)
+		} else {
+			log.Printf("Test notification to %s (%s) sent.", target.Address(), target.Type)
+		}
+	}
+	return failed
+}
+
 func (t *Tracker) sendNotification(target config.NotifyTarget, backendName string, r backend.Release) error {
+	return t.deliver(target,
+		func() (string, string) { return formatRelease(backendName, r) },
+		func() (string, string) { return formatReleaseMatrix(backendName, r) })
+}
+
+// deliver routes a message to target over its protocol. xmppMsg returns the
+// XMPP body and avatar URL, matrixMsg the Matrix plain and HTML bodies; only
+// the one matching the target's protocol is called.
+func (t *Tracker) deliver(target config.NotifyTarget, xmppMsg, matrixMsg func() (string, string)) error {
 	switch target.Type {
 	case config.NotifyMUC, config.NotifyDirect:
 		if t.xmpp == nil {
 			return errors.New("XMPP is not configured")
 		}
-		body, avatarURL := formatRelease(backendName, r)
+		body, avatarURL := xmppMsg()
 		if target.Type == config.NotifyMUC {
 			return t.xmpp.SendMUC(target.JID, body, avatarURL)
 		}
@@ -228,7 +273,7 @@ func (t *Tracker) sendNotification(target config.NotifyTarget, backendName strin
 		if t.matrix == nil {
 			return errors.New("Matrix is not configured")
 		}
-		plain, htmlBody := formatReleaseMatrix(backendName, r)
+		plain, htmlBody := matrixMsg()
 		if target.Type == config.NotifyMatrixRoom {
 			return t.matrix.SendRoom(target.ID, plain, htmlBody)
 		}

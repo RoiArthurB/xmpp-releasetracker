@@ -1,6 +1,9 @@
 package tracker
 
 import (
+	"bytes"
+	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -276,5 +279,68 @@ func TestMatrixTargetWithoutMatrixClientDoesNotPanic(t *testing.T) {
 	err := tr.sendNotification(config.NotifyTarget{ID: "#r:example.org", Type: config.NotifyMatrixRoom}, "github", r)
 	if err == nil {
 		t.Error("want an error when Matrix is not configured")
+	}
+}
+
+func TestFirstDiscoveryIsLogged(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	tr, _ := newTestTracker(t)
+	b := &fakeBackend{releases: []backend.Release{release("v1.1.0", time.Hour), release("v1.0.0", 48*time.Hour)}}
+	if err := tr.processRepo(b, "owner/repo", mucTarget, false); err != nil {
+		t.Fatalf("processRepo: %v", err)
+	}
+	if !strings.Contains(buf.String(), "[fake] owner/repo: first discovery, recorded 2 existing release(s)") {
+		t.Errorf("first discovery not logged, got: %q", buf.String())
+	}
+
+	buf.Reset()
+	if err := tr.processRepo(b, "owner/repo", mucTarget, false); err != nil {
+		t.Fatalf("processRepo: %v", err)
+	}
+	if strings.Contains(buf.String(), "first discovery") {
+		t.Errorf("first discovery logged again on second poll: %q", buf.String())
+	}
+}
+
+func TestSendTestNotifications(t *testing.T) {
+	tr, n := newTestTracker(t)
+	m := &fakeMatrix{}
+	tr.matrix = m
+	tr.cfg = &config.Config{
+		DefaultNotify: []config.NotifyTarget{{ID: "@alice:example.org", Type: config.NotifyMatrixDirect}},
+		Tracking: []config.TrackingEntry{
+			{Notify: []config.NotifyTarget{
+				{JID: "room@muc.example.org", Type: config.NotifyMUC},
+				{ID: "@alice:example.org", Type: config.NotifyMatrixDirect}, // duplicate of default
+			}},
+			{Notify: []config.NotifyTarget{
+				{JID: "room@muc.example.org", Type: config.NotifyMUC}, // duplicate across entries
+				{ID: "#releases:example.org", Type: config.NotifyMatrixRoom},
+			}},
+		},
+	}
+
+	if failed := tr.SendTestNotifications(); failed != 0 {
+		t.Fatalf("SendTestNotifications reported %d failures, want 0", failed)
+	}
+	if len(n.muc) != 1 || len(m.direct) != 1 || len(m.room) != 1 {
+		t.Fatalf("got %d muc / %d matrix direct / %d matrix room, want 1 each (deduplicated)", len(n.muc), len(m.direct), len(m.room))
+	}
+	if n.muc[0].body != testMessage || m.direct[0].plain != testMessage {
+		t.Errorf("unexpected test message bodies: %+v / %+v", n.muc[0], m.direct[0])
+	}
+}
+
+func TestSendTestNotificationsCountsFailures(t *testing.T) {
+	tr, _ := newTestTracker(t) // XMPP only, no Matrix client
+	tr.cfg = &config.Config{DefaultNotify: []config.NotifyTarget{
+		{JID: "bob@example.org", Type: config.NotifyDirect},
+		{ID: "#r:example.org", Type: config.NotifyMatrixRoom},
+	}}
+	if failed := tr.SendTestNotifications(); failed != 1 {
+		t.Errorf("SendTestNotifications reported %d failures, want 1", failed)
 	}
 }

@@ -24,7 +24,18 @@ var version = "dev"
 
 func main() {
 	configPath := flag.String("config", "config.yml", "path to config file")
+	testNotify := flag.Bool("test-notify", false, "send a test message to every notify target, then exit (status 1 if any failed)")
 	flag.Parse()
+
+	// Registered first so it runs last: deferred closes (Matrix logout,
+	// XMPP disconnect, database) still execute before the process exits.
+	// Only exits on failure, so a panic is never masked by a zero status.
+	exitCode := 0
+	defer func() {
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+	}()
 
 	log.Printf("xmpp-releasetracker %s starting", version)
 
@@ -132,6 +143,13 @@ func main() {
 	defer stop()
 
 	t := tracker.New(cfg, backends, st, xn, mn, cfg.Verbose)
+	if *testNotify {
+		if failed := t.SendTestNotifications(); failed > 0 {
+			log.Printf("Test notification: %d target(s) failed.", failed)
+			exitCode = 1
+		}
+		return
+	}
 	t.Run(ctx)
 	log.Println("Shutting down.")
 }
