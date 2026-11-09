@@ -148,7 +148,7 @@ func TestFormatReleaseMatrix(t *testing.T) {
 		Body:      "line one\n<script>alert(1)</script>",
 		AvatarURL: "https://github.com/owner.png",
 	}
-	plain, html := formatReleaseMatrix("github", r)
+	plain, html := formatReleaseMatrix("github", r, "")
 
 	wantPlain := "[Github] owner/repo — v1.0.0 “First <release>”\n" + r.URL + "\n\nline one\n<script>alert(1)</script>"
 	if plain != wantPlain {
@@ -162,5 +162,22 @@ func TestFormatReleaseMatrix(t *testing.T) {
 		"<br><br>line one<br>&lt;script&gt;alert(1)&lt;/script&gt;"
 	if html != wantHTML {
 		t.Errorf("html = %q\nwant   %q", html, wantHTML)
+	}
+}
+
+func TestFormatReleaseMatrixWithAvatar(t *testing.T) {
+	r := backend.Release{RepoSlug: "owner/repo", TagName: "v1.0.0", URL: "https://example.org/r"}
+	plain, html := formatReleaseMatrix("github", r, "mxc://example.org/abc")
+	if !strings.HasPrefix(html, `<img src="mxc://example.org/abc" alt="avatar" width="32" height="32"> <strong>`) {
+		t.Errorf("avatar not rendered before headline: %q", html)
+	}
+	if strings.Contains(plain, "mxc://") {
+		t.Errorf("avatar leaked into plain body: %q", plain)
+	}
+
+	// Anything that is not an mxc:// URI would not render; never embed it.
+	_, html = formatReleaseMatrix("github", r, "https://example.org/a.png")
+	if strings.Contains(html, "<img") {
+		t.Errorf("non-mxc avatar embedded: %q", html)
 	}
 }

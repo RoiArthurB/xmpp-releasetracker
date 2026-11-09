@@ -85,3 +85,27 @@ func TestPruneKeepNewest(t *testing.T) {
 		t.Error("other/repo v1 should have been kept")
 	}
 }
+
+func TestMediaCache(t *testing.T) {
+	s := openTestStore(t)
+
+	m, err := s.GetMedia("https://example.org/a.png")
+	if err != nil || m != nil {
+		t.Fatalf("GetMedia on empty store = %+v, %v; want nil, nil", m, err)
+	}
+
+	checked := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	if err := s.PutMedia("https://example.org/a.png", Media{MXCURL: "mxc://hs/1", SHA256: "aa", CheckedAt: checked}); err != nil {
+		t.Fatalf("PutMedia: %v", err)
+	}
+	if err := s.PutMedia("https://example.org/a.png", Media{MXCURL: "mxc://hs/2", SHA256: "bb", CheckedAt: checked}); err != nil {
+		t.Fatalf("PutMedia (replace): %v", err)
+	}
+	m, err = s.GetMedia("https://example.org/a.png")
+	if err != nil || m == nil {
+		t.Fatalf("GetMedia = %+v, %v", m, err)
+	}
+	if m.MXCURL != "mxc://hs/2" || m.SHA256 != "bb" || !m.CheckedAt.Equal(checked) {
+		t.Errorf("GetMedia = %+v, want mxc://hs/2, bb, %v", m, checked)
+	}
+}

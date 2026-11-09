@@ -1,6 +1,8 @@
 package store
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +17,12 @@ CREATE TABLE IF NOT EXISTS seen_releases (
     tag_name     TEXT NOT NULL,
     published_at DATETIME,
     PRIMARY KEY (backend, repo_slug, tag_name)
+);
+CREATE TABLE IF NOT EXISTS media (
+    original_url TEXT PRIMARY KEY,
+    mxc_url      TEXT NOT NULL,
+    sha256       TEXT NOT NULL,
+    checked_at   DATETIME NOT NULL
 );`
 
 type Store struct {
@@ -89,6 +97,37 @@ DELETE FROM seen_releases WHERE rowid IN (
 		return 0, fmt.Errorf("pruning seen_releases: %w", err)
 	}
 	return res.RowsAffected()
+}
+
+// Media is a cached upload of a remote image to the Matrix media repository.
+type Media struct {
+	MXCURL    string    `db:"mxc_url"`
+	SHA256    string    `db:"sha256"`
+	CheckedAt time.Time `db:"checked_at"`
+}
+
+// GetMedia returns the cached upload for originalURL, or nil when there is none.
+func (s *Store) GetMedia(originalURL string) (*Media, error) {
+	var m Media
+	err := s.db.Get(&m, `SELECT mxc_url, sha256, checked_at FROM media WHERE original_url=?`, originalURL)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying media: %w", err)
+	}
+	return &m, nil
+}
+
+// PutMedia records (or replaces) the cached upload for originalURL.
+func (s *Store) PutMedia(originalURL string, m Media) error {
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO media (original_url, mxc_url, sha256, checked_at) VALUES (?, ?, ?, ?)`,
+		originalURL, m.MXCURL, m.SHA256, m.CheckedAt)
+	if err != nil {
+		return fmt.Errorf("storing media: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) Close() error {

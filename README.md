@@ -288,7 +288,7 @@ Release notes here, capped at 10 lines / 2000 characters...
 
 On XMPP, messages use [XEP-0393 Message Styling](https://xmpp.org/extensions/xep-0393.html) for the bold headline (`*…*`).
 
-On Matrix, messages are sent as `m.notice` events (the convention for bots, so other bots don't react to them), with an HTML version that has a bold headline and a clickable link. The owner avatar is not included on Matrix.
+On Matrix, messages are sent as `m.notice` events (the convention for bots, so other bots don't react to them), with an HTML version that has the repository owner's avatar as a small icon, a bold headline and a clickable link. Matrix clients only show images hosted on the homeserver (`mxc://` URIs), so the bot downloads each avatar and uploads it to your homeserver's media repository on first use. Uploads are cached in the database and checked again every 48 hours, and an avatar is re-uploaded only when it actually changed. If an avatar can't be fetched or uploaded, the message is sent without it.
 
 ### Inline images (XMPP)
 

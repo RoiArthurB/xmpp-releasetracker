@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -41,6 +42,7 @@ type Notifier interface {
 type MatrixNotifier interface {
 	SendRoom(roomIDOrAlias, plain, html string) error
 	SendDirect(userID, plain, html string) error
+	UploadMedia(data []byte, contentType, filename string) (string, error)
 }
 
 // Tracker orchestrates polling all tracking entries.
@@ -50,6 +52,7 @@ type Tracker struct {
 	store    *store.Store
 	xmpp     Notifier       // nil when XMPP is not configured
 	matrix   MatrixNotifier // nil when Matrix is not configured
+	http     *http.Client   // fetches avatars to upload to Matrix
 	verbose  bool
 }
 
@@ -62,6 +65,7 @@ func New(cfg *config.Config, backends BackendRegistry, st *store.Store, xc Notif
 		store:    st,
 		xmpp:     xc,
 		matrix:   mc,
+		http:     &http.Client{Timeout: 15 * time.Second},
 		verbose:  verbose,
 	}
 }
@@ -252,7 +256,7 @@ func (t *Tracker) SendTestNotifications() int {
 func (t *Tracker) sendNotification(target config.NotifyTarget, backendName string, r backend.Release) error {
 	return t.deliver(target,
 		func() (string, string) { return formatRelease(backendName, r) },
-		func() (string, string) { return formatReleaseMatrix(backendName, r) })
+		func() (string, string) { return formatReleaseMatrix(backendName, r, t.matrixAvatar(r.AvatarURL)) })
 }
 
 // deliver routes a message to target over its protocol. xmppMsg returns the
@@ -342,13 +346,17 @@ func formatRelease(backendName string, r backend.Release) (body, avatarURL strin
 // (org.matrix.custom.html) for a release. Everything taken from the forge is
 // HTML-escaped: release notes are untrusted input.
 //
-// The avatar is not included: Matrix clients only display mxc:// images, and
-// re-uploading every owner avatar to the media repository is not worth it.
-func formatReleaseMatrix(backendName string, r backend.Release) (plain, htmlBody string) {
+// avatarMXC, when it is an mxc:// URI, is shown as a 32px icon before the
+// headline. Matrix clients only display mxc:// images, so the caller uploads
+// the forge avatar first (see matrixAvatar); pass "" to omit it.
+func formatReleaseMatrix(backendName string, r backend.Release, avatarMXC string) (plain, htmlBody string) {
 	headline := fmt.Sprintf("[%s] %s \u2014 %s", releaseLabel(backendName), r.RepoSlug, releaseTitle(r))
 
 	var p, h strings.Builder
 	p.WriteString(headline + "\n" + r.URL)
+	if strings.HasPrefix(avatarMXC, "mxc://") {
+		fmt.Fprintf(&h, "<img src=\"%s\" alt=\"avatar\" width=\"32\" height=\"32\"> ", html.EscapeString(avatarMXC))
+	}
 	fmt.Fprintf(&h, "<strong>%s</strong><br>", html.EscapeString(headline))
 	if r.URL != "" {
 		u := html.EscapeString(r.URL)

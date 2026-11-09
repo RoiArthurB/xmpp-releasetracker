@@ -2,6 +2,8 @@ package matrix
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +30,11 @@ type fakeHS struct {
 	forbiddenN  int // number of upcoming sends to answer with M_FORBIDDEN
 	loggedOut   bool
 	loginDevice string
+	uploads     []upload
+}
+
+type upload struct {
+	contentType, filename, body string
 }
 
 type sentEvent struct {
@@ -84,6 +91,10 @@ func (f *fakeHS) serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case r.URL.Path == "/_matrix/media/v3/upload" && r.Method == http.MethodPost:
+		body, _ := io.ReadAll(r.Body)
+		f.uploads = append(f.uploads, upload{r.Header.Get("Content-Type"), r.URL.Query().Get("filename"), string(body)})
+		writeJSON(w, 200, map[string]string{"content_uri": fmt.Sprintf("mxc://example.org/media%d", len(f.uploads))})
 	case path == "/account/whoami":
 		writeJSON(w, 200, map[string]string{"user_id": botID})
 	case path == "/logout":
@@ -335,4 +346,21 @@ type failingTransport struct{}
 
 func (failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, http.ErrHandlerTimeout
+}
+
+func TestUploadMedia(t *testing.T) {
+	f, srv := newFakeHS(t)
+	c := connect(t, srv)
+
+	mxc, err := c.UploadMedia([]byte("PNGDATA"), "image/png", "owner.png")
+	if err != nil {
+		t.Fatalf("UploadMedia: %v", err)
+	}
+	if mxc != "mxc://example.org/media1" {
+		t.Errorf("mxc = %q", mxc)
+	}
+	want := upload{"image/png", "owner.png", "PNGDATA"}
+	if len(f.uploads) != 1 || f.uploads[0] != want {
+		t.Errorf("uploads = %+v, want [%+v]", f.uploads, want)
+	}
 }

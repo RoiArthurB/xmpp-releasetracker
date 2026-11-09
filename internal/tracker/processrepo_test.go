@@ -2,6 +2,7 @@ package tracker
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -52,9 +53,19 @@ type matrixMessage struct {
 	to, plain, html string
 }
 
-// fakeMatrix records Matrix messages instead of sending them.
+// fakeMatrix records Matrix messages and uploads instead of sending them.
 type fakeMatrix struct {
 	room, direct []matrixMessage
+	uploads      int
+	uploadErr    error
+}
+
+func (f *fakeMatrix) UploadMedia(data []byte, contentType, filename string) (string, error) {
+	if f.uploadErr != nil {
+		return "", f.uploadErr
+	}
+	f.uploads++
+	return fmt.Sprintf("mxc://example.org/upload%d", f.uploads), nil
 }
 
 func (f *fakeMatrix) SendRoom(room, plain, html string) error {

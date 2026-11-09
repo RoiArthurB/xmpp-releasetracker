@@ -342,9 +342,35 @@ func (c *Client) do(method, path string, in, out any) error {
 			return err
 		}
 	}
+	return c.doRaw(method, c.hs+"/_matrix/client/v3"+path, "application/json", body, out)
+}
+
+// UploadMedia stores data in the homeserver's media repository and returns
+// its mxc:// URI, the only kind of image source Matrix clients render in a
+// message's HTML body.
+func (c *Client) UploadMedia(data []byte, contentType, filename string) (string, error) {
+	u := c.hs + "/_matrix/media/v3/upload"
+	if filename != "" {
+		u += "?filename=" + url.QueryEscape(filename)
+	}
+	var resp struct {
+		ContentURI string `json:"content_uri"`
+	}
+	if err := c.doRaw(http.MethodPost, u, contentType, data, &resp); err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(resp.ContentURI, "mxc://") {
+		return "", fmt.Errorf("upload returned invalid content_uri %q", resp.ContentURI)
+	}
+	return resp.ContentURI, nil
+}
+
+// doRaw sends body (with the given content type) to the absolute URL u,
+// retrying like do.
+func (c *Client) doRaw(method, u, contentType string, body []byte, out any) error {
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		wait, err := c.doOnce(method, path, body, out)
+		wait, err := c.doOnce(method, u, contentType, body, out)
 		if err == nil {
 			return nil
 		}
@@ -359,17 +385,17 @@ func (c *Client) do(method, path string, in, out any) error {
 
 // doOnce returns the error and how long to wait before retrying it, or a
 // negative wait when the error is not worth retrying.
-func (c *Client) doOnce(method, path string, body []byte, out any) (time.Duration, error) {
+func (c *Client) doOnce(method, u, contentType string, body []byte, out any) (time.Duration, error) {
 	var rd io.Reader
 	if body != nil {
 		rd = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, c.hs+"/_matrix/client/v3"+path, rd)
+	req, err := http.NewRequest(method, u, rd)
 	if err != nil {
 		return -1, err
 	}
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
@@ -387,7 +413,7 @@ func (c *Client) doOnce(method, path string, body []byte, out any) (time.Duratio
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if out != nil && len(data) > 0 {
 			if err := json.Unmarshal(data, out); err != nil {
-				return -1, fmt.Errorf("decoding %s response: %w", path, err)
+				return -1, fmt.Errorf("decoding %s response: %w", req.URL.Path, err)
 			}
 		}
 		return 0, nil
