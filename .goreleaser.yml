@@ -43,41 +43,17 @@ changelog:
       - "^test:"
       - "^chore:"
 
-dockers:
-  - image_templates:
-      - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-
-  - image_templates:
-      - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
-      - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    goarch: arm64
-    build_flag_templates:
-      - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}"
-    image_templates:
-      - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-      - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
-
-  - name_template: "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:latest"
-    image_templates:
-      - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-      - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
-
-  - name_template: "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
-
-  - name_template: "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:latest"
-    image_templates:
-      - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
+# One multi-platform buildx build per run: builds, pushes and assembles the
+# manifest list in one step (replaces the deprecated dockers +
+# docker_manifests pair). Every image is pushed with every tag.
+dockers_v2:
+  - dockerfile: Dockerfile.goreleaser
+    images:
+      - "{{ .Env.DOCKERHUB_USERNAME }}/xmpp-releasetracker"
+      - "ghcr.io/{{ .Env.GHCR_USERNAME }}/xmpp-releasetracker"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64

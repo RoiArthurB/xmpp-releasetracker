@@ -56,7 +56,7 @@ jobs:
       # install-only puts the binary on PATH without running it, so the
       # subsequent run: step can unset GITHUB_TOKEN before invoking goreleaser.
       - name: Install GoReleaser
-        uses: https://github.com/goreleaser/goreleaser-action@v6
+        uses: https://github.com/goreleaser/goreleaser-action@v7
         with:
           version: latest
           install-only: true

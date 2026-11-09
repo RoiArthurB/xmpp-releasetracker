@@ -47,29 +47,16 @@ changelog:
       - "^test:"
       - "^chore:"
 
-dockers:
-  - image_templates:
-      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-
-  - image_templates:
-      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    goarch: arm64
-    build_flag_templates:
-      - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}"
-    image_templates:
-      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
-
-  - name_template: "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:latest"
-    image_templates:
-      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-amd64"
-      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker:{{ .Version }}-arm64"
+# One multi-platform buildx build per run: builds, pushes and assembles the
+# manifest list in one step (replaces the deprecated dockers +
+# docker_manifests pair).
+dockers_v2:
+  - dockerfile: Dockerfile.goreleaser
+    images:
+      - "{{ .Env.REGISTRY }}/{{ .Env.REGISTRY_USERNAME }}/xmpp-releasetracker"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
